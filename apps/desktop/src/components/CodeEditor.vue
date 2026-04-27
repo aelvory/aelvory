@@ -31,9 +31,80 @@ const vars = useVariableNames();
 
 const languageCompartment = new Compartment();
 const readonlyCompartment = new Compartment();
+const themeCompartment = new Compartment();
 
 let view: EditorView | null = null;
 let applyingExternal = false;
+let themeObserver: MutationObserver | null = null;
+
+/**
+ * Build a CodeMirror theme that pulls colors from our PrimeVue
+ * tokens. The tokens flip light/dark via the `.dark` class on
+ * <html>; the theme reconfigures via `themeCompartment` whenever
+ * that class toggles.
+ *
+ * The `dark: true` flag in the second arg is critical: CodeMirror
+ * uses it to pick its built-in defaults for any rules we DON'T
+ * override (selection range outline, autocomplete dropdown chrome,
+ * etc.). Without it, even with our color overrides, those bits
+ * stay light.
+ */
+function buildTheme(dark: boolean) {
+  return EditorView.theme(
+    {
+      '&': {
+        height: '100%',
+        backgroundColor: 'var(--p-content-background)',
+        color: 'var(--p-text-color)',
+      },
+      '.cm-scroller': { fontFamily: "'SF Mono', Consolas, monospace" },
+      '.cm-content': {
+        fontSize: '0.82rem',
+        caretColor: 'var(--p-text-color)',
+      },
+      '.cm-focused': { outline: 'none' },
+      // Line-number gutter — was inheriting CodeMirror's hardcoded
+      // light scheme (white bg, dark digits) regardless of our
+      // .dark class. Now uses tokens that flip.
+      '.cm-gutters': {
+        backgroundColor: 'var(--p-content-hover-background)',
+        color: 'var(--p-text-muted-color)',
+        border: 'none',
+      },
+      '.cm-activeLine': {
+        backgroundColor: 'var(--p-content-hover-background)',
+      },
+      '.cm-activeLineGutter': {
+        backgroundColor: 'var(--p-content-hover-background)',
+        color: 'var(--p-text-color)',
+      },
+      // Selection — !important needed because CodeMirror's own rule
+      // is more specific than what we'd produce otherwise.
+      '.cm-selectionBackground, .cm-content ::selection': {
+        backgroundColor: 'var(--p-highlight-background) !important',
+      },
+      // Autocomplete dropdown — without this, the popover stays
+      // white-on-dark in dark mode.
+      '.cm-tooltip': {
+        backgroundColor: 'var(--p-content-background)',
+        color: 'var(--p-text-color)',
+        border: '1px solid var(--p-content-border-color)',
+      },
+      '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
+        color: 'var(--p-text-color)',
+      },
+      '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+        backgroundColor: 'var(--p-highlight-background)',
+        color: 'var(--p-text-color)',
+      },
+    },
+    { dark },
+  );
+}
+
+function isDarkMode(): boolean {
+  return document.documentElement.classList.contains('dark');
+}
 
 function langExtension(lang: CodeLanguage) {
   if (lang === 'xml') return xml();
@@ -96,12 +167,7 @@ function buildExtensions() {
         model.value = update.state.doc.toString();
       }
     }),
-    EditorView.theme({
-      '&': { height: '100%' },
-      '.cm-scroller': { fontFamily: "'SF Mono', Consolas, monospace" },
-      '.cm-content': { fontSize: '0.82rem' },
-      '.cm-focused': { outline: 'none' },
-    }),
+    themeCompartment.of(buildTheme(isDarkMode())),
   ];
 }
 
@@ -112,9 +178,26 @@ onMounted(() => {
     extensions: buildExtensions(),
   });
   view = new EditorView({ state, parent: host.value });
+
+  // Re-theme the editor when the user toggles light / dark in
+  // Settings (or the OS preference changes for 'auto'). The .dark
+  // class on <html> is the single source of truth — composables/
+  // theme.ts adds / removes it; we just react.
+  themeObserver = new MutationObserver(() => {
+    if (!view) return;
+    view.dispatch({
+      effects: themeCompartment.reconfigure(buildTheme(isDarkMode())),
+    });
+  });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
 });
 
 onUnmounted(() => {
+  themeObserver?.disconnect();
+  themeObserver = null;
   view?.destroy();
   view = null;
 });

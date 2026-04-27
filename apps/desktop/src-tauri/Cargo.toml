@@ -15,12 +15,15 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
-# Per-request `danger.acceptInvalidCerts` / `acceptInvalidHostnames`
-# pass through to reqwest's matching client-builder flags by default
-# in plugin-http v2 — no Cargo feature needed. The JS layer guards
-# them behind `settings.ignoreCerts` (default off, with a prominent
-# Settings-UI warning).
-tauri-plugin-http = "2"
+# `dangerous-settings` enables per-request `danger.acceptInvalidCerts`
+# / `acceptInvalidHostnames` flags. Without it, plugin-http rejects
+# the call at runtime with "dangerous settings used but are not
+# enabled" instead of skipping cert validation. The JS layer guards
+# the flag behind `settings.ignoreCerts` (default off, with a
+# prominent Settings-UI warning) so the feature being compiled in
+# isn't itself the security risk — only flipping the in-app toggle
+# is.
+tauri-plugin-http = { version = "2", features = ["dangerous-settings"] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
