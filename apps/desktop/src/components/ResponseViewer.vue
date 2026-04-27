@@ -137,6 +137,23 @@ async function copyHeaders(headers: Header[]) {
     <div v-if="running && !response" class="placeholder">Running…</div>
     <div v-else-if="!response" class="placeholder">Send a request to see the response here.</div>
     <template v-else>
+      <!-- When the request never completed (status 0), foreground the
+           error + hint so the user has something actionable instead of
+           just a status tag in the bar. The body / headers tabs below
+           are empty in this case anyway. -->
+      <div v-if="response.status === 0" class="error-banner">
+        <div class="error-title">
+          <i class="pi pi-exclamation-triangle" />
+          Request failed
+        </div>
+        <div class="error-detail">
+          {{ response.errorMessage || 'No detail surfaced. Open DevTools (right-click → Inspect → Console) for the raw error.' }}
+        </div>
+        <div v-if="response.errorHint" class="error-hint">
+          <i class="pi pi-info-circle" />
+          {{ response.errorHint }}
+        </div>
+      </div>
       <div class="status-bar">
         <Tag :value="statusLabel" :severity="statusSeverity(response.status)" />
         <span class="meta">
@@ -367,6 +384,45 @@ async function copyHeaders(headers: Header[]) {
   padding: 1rem;
   color: var(--p-text-muted-color, #6b7280);
   font-size: 0.9rem;
+}
+.error-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(220, 38, 38, 0.08);
+  border-bottom: 1px solid rgba(220, 38, 38, 0.25);
+  color: var(--p-text-color, inherit);
+}
+.error-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #dc2626;
+}
+.error-detail {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 0.85rem;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.error-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--p-content-background, rgba(255, 255, 255, 0.5));
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--p-text-color, inherit);
+}
+.error-hint .pi {
+  color: var(--p-primary-color, #3b82f6);
+  margin-top: 0.15rem;
+  flex-shrink: 0;
 }
 .status-bar {
   display: flex;
