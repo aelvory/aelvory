@@ -1,13 +1,27 @@
-# Build the Tauri desktop app for every supported OS / arch on tag push.
+# Build the Tauri desktop app for every supported OS / arch on tag push,
+# then publish a single GitHub release with all platform installers.
 #
-# Trigger: push a tag matching `desktop-v*` (e.g. `desktop-v0.0.2`),
-# or run manually via workflow_dispatch. The workflow:
+# Trigger: push a tag matching `desktop-v*` (e.g. `desktop-v0.0.4`),
+# or run manually via workflow_dispatch.
 #
-#   1. Builds the Vue webview (vite) once per OS — Tauri's
-#      beforeBuildCommand handles this via `pnpm build`.
-#   2. Compiles the Rust shell, codesigns where credentials are
-#      provided, and produces native installers per platform.
-#   3. Attaches each artifact to the matching GitHub release.
+# Two-phase shape (mirrors the proven pattern in qubic/core-bob's
+# release.yml — build first, publish second):
+#
+#   1. `build` (matrix of 4) — compile + bundle per platform.
+#      Each leg uploads its bundles as a workflow artifact named
+#      after the platform label.
+#
+#   2. `publish` (single Ubuntu job) — downloads every platform's
+#      artifact and creates ONE GitHub draft release with all of
+#      them attached. Single API call, no race. Idempotent re-runs:
+#      softprops/action-gh-release@v2 appends to the existing draft
+#      instead of creating duplicates.
+#
+# Why split: the earlier matrix-only shape had each of 4 legs trying
+# to create the same draft release in parallel via tauri-action's
+# built-in upload, which raced and silently failed in this org's
+# Actions environment. Splitting puts the release call on one
+# serial job; tauri-action is now build-only.
 #
 # Code signing is OFF by default (commented). Add the matching
 # secrets and uncomment the env blocks if you want signed builds:
@@ -27,12 +41,10 @@ on:
       - 'desktop-v*'
   workflow_dispatch:
 
-# `tauri-action` creates a draft GitHub Release and uploads the
-# bundles to it. That requires write access to the repo's releases —
-# which the default GITHUB_TOKEN does NOT have when the repo's
-# Settings → Actions → Workflow permissions is set to "read only"
-# (the default for new orgs since 2023). Granting contents:write at
-# the workflow level scopes the elevated token to this workflow only.
+# softprops/action-gh-release in the publish job needs contents:write
+# to create / edit the GitHub release. Both the org and repo
+# "Workflow permissions" must also be set to "Read and write
+# permissions" or this elevation is a no-op.
 permissions:
   contents: write
 
@@ -40,7 +52,8 @@ jobs:
   build:
     strategy:
       # `fail-fast: false` so a single platform's failure doesn't
-      # kill the others — partial release artifacts are still useful.
+      # kill the others — partial release artifacts are still useful
+      # and the publish job can decide what to do with them.
       fail-fast: false
       matrix:
         include:
@@ -73,11 +86,6 @@ jobs:
       # javascriptcoregtk-4.1 for the embedded webview. macOS and
       # Windows ship the webview with the OS, so no equivalent step
       # is needed there.
-      #
-      # Tauri 2's default Linux webview path is now webkit2gtk-4.1.
-      # The older 4.0 series is being phased out; building against
-      # 4.0 fails because `javascriptcore-rs-sys` (a transitive
-      # Tauri dep) probes for 4.1 by default.
       - name: Install Linux Tauri prerequisites
         if: matrix.os == 'ubuntu-22.04'
         run: |
@@ -120,12 +128,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # tauri-action handles the build + bundle + (optionally) draft
-      # release. `tagName` matches our trigger pattern; `releaseName`
-      # is a human-readable title shown on the Releases page.
+      # tauri-action runs the build + bundle. NO release flags here
+      # (no tagName, no releaseDraft, no releaseId) — that means it
+      # builds the bundles into the matrix target dir and stops.
+      # The `publish` job below picks them up via the workflow
+      # artifact uploaded next.
       - uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Apple signing — uncomment + add secrets to enable.
           # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -135,23 +144,78 @@ jobs:
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: apps/desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Desktop ${{ github.ref_name }}'
-          releaseDraft: true
-          prerelease: false
           args: --target ${{ matrix.target }}
 
-      # Also keep the raw bundles as a workflow artifact in case the
-      # release-attachment step fails (e.g. permission issue on the
-      # GITHUB_TOKEN). This is belt-and-suspenders.
-      - uses: actions/upload-artifact@v4
+      # Hand off bundles to the publish job. The bundle dir layout
+      # differs per platform (msi/, nsis/, dmg/, deb/, appimage/, rpm/),
+      # so the path glob covers all of them — `if-no-files-found:
+      # warn` keeps the artifact creation succeeding even if a
+      # particular OS doesn't produce every bundle type.
+      - name: Upload platform artifact
+        uses: actions/upload-artifact@v4
         with:
           name: aelvory-desktop-${{ matrix.label }}
           path: |
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*-setup.exe
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
           if-no-files-found: warn
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # `if: always()` so partial successes still publish what they
+    # have — e.g. if Windows fails but the other 3 produced bundles,
+    # the release still goes out with 3 platforms attached. Replace
+    # with `if: success()` if you'd rather block all-or-nothing.
+    if: always() && (needs.build.result == 'success' || needs.build.result == 'failure')
+
+    steps:
+      # Pull every platform's artifacts into one local directory.
+      # `pattern: aelvory-desktop-*` matches all four matrix
+      # uploads; `merge-multiple: true` flattens them into one tree
+      # (no per-platform subdir), which makes the `files:` glob
+      # below simpler.
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: aelvory-desktop-*
+          merge-multiple: true
+          path: artifacts/
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Files to publish:"
+          find artifacts/ -type f | sort
+          echo "Total: $(find artifacts/ -type f | wc -l) files"
+
+      # Single source of release-creation truth. softprops handles
+      # the find-or-create dance idempotently against the tag, so
+      # re-runs of this job never duplicate.
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 'Desktop ${{ github.ref_name }}'
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          # `fail_on_unmatched_files: false` — if a platform's build
+          # legitimately failed and produced nothing, don't take the
+          # release down with it. The publish step still attaches
+          # whatever artifacts the successful platforms uploaded.
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/*.dmg
+            artifacts/*.app.tar.gz
+            artifacts/*.msi
+            artifacts/*-setup.exe
+            artifacts/*.deb
+            artifacts/*.AppImage
+            artifacts/*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
