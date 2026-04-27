@@ -2,7 +2,7 @@
   "name": "aelvory-vscode",
   "displayName": "Aelvory",
   "description": "Aelvory API testing inside VSCode",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "publisher": "aelvory",
   "icon": "icon.png",
