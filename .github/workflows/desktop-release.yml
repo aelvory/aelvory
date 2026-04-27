@@ -27,6 +27,15 @@ on:
       - 'desktop-v*'
   workflow_dispatch:
 
+# `tauri-action` creates a draft GitHub Release and uploads the
+# bundles to it. That requires write access to the repo's releases —
+# which the default GITHUB_TOKEN does NOT have when the repo's
+# Settings → Actions → Workflow permissions is set to "read only"
+# (the default for new orgs since 2023). Granting contents:write at
+# the workflow level scopes the elevated token to this workflow only.
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -47,9 +56,10 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             label: windows-x64
-          # Linux x64. ubuntu-22.04 (not -latest) for webkit2gtk-4.0
-          # compatibility — newer Ubuntu shipped 4.1 only and
-          # Tauri 2's webkit feature flag pins to 4.0 by default.
+          # Linux x64. ubuntu-22.04 still works — but we now install
+          # webkit2gtk-4.1 (not 4.0), since Tauri 2's current default
+          # is the 4.1 branch. 22.04's universe repo ships both, so
+          # we don't need to bump to 24.04.
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: linux-x64
@@ -59,20 +69,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Linux Tauri prereqs: webkit2gtk + libsoup + javascriptcoregtk
-      # for the embedded webview. macOS and Windows ship the webview
-      # with the OS, so no equivalent step is needed there.
+      # Linux Tauri prereqs: webkit2gtk-4.1 + libsoup-3.0 +
+      # javascriptcoregtk-4.1 for the embedded webview. macOS and
+      # Windows ship the webview with the OS, so no equivalent step
+      # is needed there.
+      #
+      # Tauri 2's default Linux webview path is now webkit2gtk-4.1.
+      # The older 4.0 series is being phased out; building against
+      # 4.0 fails because `javascriptcore-rs-sys` (a transitive
+      # Tauri dep) probes for 4.1 by default.
       - name: Install Linux Tauri prerequisites
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libsoup-3.0-dev \
-            libjavascriptcoregtk-4.0-dev \
             patchelf \
             build-essential \
             curl \
