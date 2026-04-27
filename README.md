@@ -7,6 +7,22 @@ and WebSocket requests on your desktop or inside VSCode, share them across
 devices and teammates, and import from OpenAPI / Swagger / Postman /
 Insomnia / HAR. Self-hosted; the sync server is yours.
 
+## Runs where you code and how you want
+Either as [desktop app](https://github.com/aelvory/aelvory/releases) on windows, linux or macOs or directly in [vscode](https://marketplace.visualstudio.com/items?itemName=Aelvory.aelvory-vscode).
+Adapts to your environment in the dark or light mode and speaks your language. (English, German, Spanish, French, Chinese)
+
+## Main UI
+<img width="1063" height="881" alt="image" src="https://github.com/user-attachments/assets/0acadea9-1574-46e4-b123-d13f933dd244" />
+
+
+1. Organizations (Personal, Shared)
+2. Projects (Private, Shared)
+3. Environments (Per project shared environments)
+4. Collections (HTTP Requests, Websockets)
+5. Your current open tabs (pinnable for persistence accross restarts)
+6. Pre-request and Post-response Scripts (e.g. for testing or manipulating variables/envs)
+7. Request-Response area (formatted, raw, show processed headers)
+
 ## Rational
 This project got into life because of being tired of existing, once great, products. Which started to integrate more and more and also started their business based on "user licenses".
 
