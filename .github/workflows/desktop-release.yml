@@ -58,13 +58,18 @@ jobs:
       matrix:
         include:
           # Apple Silicon (M-series). macOS-latest = arm64 since 2024.
+          # Intel macOS (x86_64-apple-darwin) is intentionally NOT in
+          # the matrix: GitHub's only Intel runner (macos-13) is
+          # progressively deprecated and now queues indefinitely on
+          # free-tier accounts. Intel Mac users can build from source
+          # or fall back to the arm64 build via Rosetta 2 (where
+          # available — Rosetta only goes arm64→intel-emulation, NOT
+          # the reverse, so for true Intel Mac users this is "build
+          # locally"). When demand picks up, swap in cross-compile
+          # from macos-latest (arm64) targeting x86_64-apple-darwin.
           - os: macos-latest
             target: aarch64-apple-darwin
             label: macos-arm64
-          # Intel macOS. macos-13 is the last Intel-based runner image.
-          - os: macos-13
-            target: x86_64-apple-darwin
-            label: macos-x64
           # Windows x64.
           - os: windows-latest
             target: x86_64-pc-windows-msvc
