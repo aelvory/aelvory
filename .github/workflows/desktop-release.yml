@@ -212,13 +212,21 @@ jobs:
           # release down with it. The publish step still attaches
           # whatever artifacts the successful platforms uploaded.
           fail_on_unmatched_files: false
+          # Recursive globs — `actions/download-artifact@v4` with
+          # `merge-multiple: true` preserves the directory layout
+          # WITHIN each uploaded artifact. Since our upload paths
+          # have a common prefix
+          # (`apps/desktop/src-tauri/target/<arch>/release/bundle/`),
+          # the resulting structure under artifacts/ is
+          # msi/, nsis/, dmg/, macos/, deb/, appimage/, rpm/ —
+          # not flat. `**/` walks into all of those.
           files: |
-            artifacts/*.dmg
-            artifacts/*.app.tar.gz
-            artifacts/*.msi
-            artifacts/*-setup.exe
-            artifacts/*.deb
-            artifacts/*.AppImage
-            artifacts/*.rpm
+            artifacts/**/*.dmg
+            artifacts/**/*.app.tar.gz
+            artifacts/**/*.msi
+            artifacts/**/*-setup.exe
+            artifacts/**/*.deb
+            artifacts/**/*.AppImage
+            artifacts/**/*.rpm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
