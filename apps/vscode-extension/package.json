@@ -2,7 +2,7 @@
   "name": "aelvory-vscode",
   "displayName": "Aelvory",
   "description": "Aelvory API testing inside VSCode",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "publisher": "aelvory",
   "icon": "icon.png",
@@ -90,7 +90,10 @@
       "properties": {
         "aelvory.storageScope": {
           "type": "string",
-          "enum": ["global", "workspace"],
+          "enum": [
+            "global",
+            "workspace"
+          ],
           "default": "global",
           "enumDescriptions": [
             "One database shared across every VSCode window. Same collections everywhere — best when API testing follows the user, not the project.",

@@ -26,7 +26,24 @@
   <body>
     <header class="topbar">
       <a href="#top" class="brand">
-        <img src="/assets/logo.svg" alt="" class="brand-glyph" />
+        <!-- Inlined so `stroke="currentColor"` inherits the link's color
+             — when the SVG is loaded via <img src> instead, the
+             browser treats it as an opaque image and `currentColor`
+             resolves to the SVG's own default (black), which is
+             invisible against the dark-mode topbar. -->
+        <svg
+          class="brand-glyph"
+          viewBox="0 0 32 32"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linejoin="round"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M5 27 L16 4 L27 27" />
+          <path d="M9.5 19 L22.5 19" />
+        </svg>
         <span class="brand-name">Aelvory</span>
       </a>
       <nav class="navlinks" aria-label="Sections">
@@ -223,7 +240,20 @@
     <footer class="footer">
       <div class="footer-inner">
         <div class="footer-brand">
-          <img src="/assets/logo.svg" alt="" class="brand-glyph small" />
+          <!-- Same inline-SVG trick as the topbar — see comment there. -->
+          <svg
+            class="brand-glyph small"
+            viewBox="0 0 32 32"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M5 27 L16 4 L27 27" />
+            <path d="M9.5 19 L22.5 19" />
+          </svg>
           <span>Aelvory</span>
         </div>
         <div class="footer-links">
@@ -232,7 +262,10 @@
           <a href="https://github.com/aelvory/aelvory/releases" rel="noopener">Releases</a>
         </div>
         <div class="footer-credit">
-          Made by <strong>joetom</strong> at <strong>aiSmart</strong>.
+          Made by
+          <a href="https://github.com/j0et0m" rel="noopener" target="_blank"><strong>joetom</strong></a>
+          at
+          <a href="https://aismart.ch" rel="noopener" target="_blank"><strong>aiSmart</strong></a>.
         </div>
       </div>
     </footer>

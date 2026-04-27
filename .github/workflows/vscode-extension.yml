@@ -1,17 +1,12 @@
-# Build a VSCode `.vsix` for every supported target. Two reasons we
-# need a matrix instead of a single host:
+# Build the VSCode extension as a single platform-agnostic .vsix.
 #
-#   1. `better-sqlite3` ships prebuilt binaries per OS/arch combo.
-#      `pnpm install` only fetches the host's own binary — packaging on
-#      Linux x64 produces a vsix that crashes on macOS or Windows.
+# The earlier per-target matrix is gone: with sql.js (WebAssembly
+# SQLite) replacing better-sqlite3 in the webview build, there's
+# nothing platform-specific in the .vsix anymore. One artifact runs
+# on every OS / arch / VSCode version.
 #
-#   2. VSCode marketplace dispatches per-target vsix files based on the
-#      user's platform. Even if we built a "universal" vsix locally,
-#      we'd have to manually tell users which one to install.
-#
-# Trigger: on tag push (e.g. `vscode-v0.0.2`) for releases, or manually
-# via workflow_dispatch for ad-hoc test builds. Avoids running on every
-# push to keep CI minutes sane.
+# Trigger: on tag push `vscode-v*` for releases, or manually via
+# workflow_dispatch. Push a tag like `vscode-v0.0.2` to ship.
 name: vscode-extension
 
 on:
@@ -22,27 +17,7 @@ on:
 
 jobs:
   package:
-    strategy:
-      # `fail-fast: false` so a single platform's failure doesn't kill
-      # the others — partial release artifacts are still useful.
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: win32-x64
-          - os: macos-13          # Intel runner
-            target: darwin-x64
-          - os: macos-latest      # ARM (M-series) runner
-            target: darwin-arm64
-          - os: ubuntu-latest
-            target: linux-x64
-          - os: ubuntu-22.04-arm
-            target: linux-arm64
-          # Alpine: marketplace target exists, but GH Actions doesn't
-          # have alpine runners. Skip unless someone actually asks for
-          # it — most VSCode-on-Linux users are glibc.
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -53,20 +28,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Node 22 LTS — better-sqlite3 publishes prebuilds for it.
-          # Older Node versions might lack a matching prebuild on some
-          # arches and trigger a from-source build, which is slow and
-          # needs a C++ toolchain.
           node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-
-      # Make sure better-sqlite3's binding for THIS platform is built
-      # / fetched. The pnpm.ignoredBuiltDependencies entry in the root
-      # package.json suppresses the install-script by default; force
-      # it here so the runner's binding actually exists.
-      - run: pnpm --filter aelvory-vscode rebuild better-sqlite3
 
       - run: pnpm --filter aelvory-vscode build
 
@@ -75,22 +40,31 @@ jobs:
 
       - name: Package
         working-directory: apps/vscode-extension
-        run: vsce package --no-dependencies --target ${{ matrix.target }}
+        run: vsce package --no-dependencies
 
       - uses: actions/upload-artifact@v4
         with:
-          name: aelvory-${{ matrix.target }}
+          name: aelvory-vscode
           path: apps/vscode-extension/*.vsix
           if-no-files-found: error
 
-      # Optional — uncomment to publish to the VSCode marketplace on
-      # tag push. Requires VSCE_PAT secret (Personal Access Token from
+      # Attach the .vsix to the GitHub release on tag push, so users
+      # can grab it from the Releases page without needing the
+      # marketplace.
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/vscode-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/vscode-extension/*.vsix
+
+      # Optional: publish to the VSCode marketplace. Uncomment after
+      # creating a VSCE_PAT secret (token from
       # https://dev.azure.com/<org>/_usersSettings/tokens with
       # Marketplace > Manage scope).
       #
-      # - name: Publish
+      # - name: Publish to marketplace
       #   if: startsWith(github.ref, 'refs/tags/vscode-v')
       #   working-directory: apps/vscode-extension
       #   env:
       #     VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      #   run: vsce publish --no-dependencies --target ${{ matrix.target }} --pat $VSCE_PAT
+      #   run: vsce publish --no-dependencies --pat $VSCE_PAT

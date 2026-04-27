@@ -112,8 +112,14 @@ const ossList: OssEntry[] = [
 
       <section class="block">
         <h3>{{ t('about.creditsTitle') }}</h3>
-        <p class="block-line">{{ t('about.creditsDeveloper') }}</p>
-        <p class="block-line">{{ t('about.creditsCompany') }}</p>
+        <p class="block-line">
+          {{ t('about.creditsDeveloper') }}
+          <a href="#" @click.prevent="openExternal('https://github.com/j0et0m')">joetom</a>
+        </p>
+        <p class="block-line">
+          {{ t('about.creditsCompany') }}
+          <a href="#" @click.prevent="openExternal('https://aismart.ch')">aiSmart</a>
+        </p>
       </section>
 
       <section class="block">

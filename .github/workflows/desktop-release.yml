@@ -1,0 +1,141 @@
+# Build the Tauri desktop app for every supported OS / arch on tag push.
+#
+# Trigger: push a tag matching `desktop-v*` (e.g. `desktop-v0.0.2`),
+# or run manually via workflow_dispatch. The workflow:
+#
+#   1. Builds the Vue webview (vite) once per OS — Tauri's
+#      beforeBuildCommand handles this via `pnpm build`.
+#   2. Compiles the Rust shell, codesigns where credentials are
+#      provided, and produces native installers per platform.
+#   3. Attaches each artifact to the matching GitHub release.
+#
+# Code signing is OFF by default (commented). Add the matching
+# secrets and uncomment the env blocks if you want signed builds:
+#   - macOS:   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+#              APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
+#              APPLE_TEAM_ID
+#   - Windows: tauri-action's signed-msi inputs (or use
+#              SignTool with a code-signing cert separately).
+#
+# Linux builds are unsigned — the typical distribution is .AppImage
+# or .deb, which don't have an OS-level signing model anyway.
+name: desktop-release
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      # `fail-fast: false` so a single platform's failure doesn't
+      # kill the others — partial release artifacts are still useful.
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon (M-series). macOS-latest = arm64 since 2024.
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-arm64
+          # Intel macOS. macos-13 is the last Intel-based runner image.
+          - os: macos-13
+            target: x86_64-apple-darwin
+            label: macos-x64
+          # Windows x64.
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x64
+          # Linux x64. ubuntu-22.04 (not -latest) for webkit2gtk-4.0
+          # compatibility — newer Ubuntu shipped 4.1 only and
+          # Tauri 2's webkit feature flag pins to 4.0 by default.
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Linux Tauri prereqs: webkit2gtk + libsoup + javascriptcoregtk
+      # for the embedded webview. macOS and Windows ship the webview
+      # with the OS, so no equivalent step is needed there.
+      - name: Install Linux Tauri prerequisites
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.0-dev \
+            patchelf \
+            build-essential \
+            curl \
+            wget \
+            file
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust target dir
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: ${{ matrix.label }}-cargo-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: ${{ matrix.label }}-cargo-
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # tauri-action handles the build + bundle + (optionally) draft
+      # release. `tagName` matches our trigger pattern; `releaseName`
+      # is a human-readable title shown on the Releases page.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Apple signing — uncomment + add secrets to enable.
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Desktop ${{ github.ref_name }}'
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
+
+      # Also keep the raw bundles as a workflow artifact in case the
+      # release-attachment step fails (e.g. permission issue on the
+      # GITHUB_TOKEN). This is belt-and-suspenders.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aelvory-desktop-${{ matrix.label }}
+          path: |
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*-setup.exe
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+          if-no-files-found: warn

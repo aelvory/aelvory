@@ -36,7 +36,7 @@ const ENV_DEFAULT_SYNC_URL =
     'https://eu.aelvory.com') as string;
 
 const DEFAULTS: SettingsData = {
-  userAgent: 'Aelvory/0.0.1',
+  userAgent: 'Aelvory/0.0.2',
   timeoutMs: 60_000,
   syncServerUrl: '',
   language: '',
