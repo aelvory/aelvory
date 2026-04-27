@@ -39,5 +39,11 @@ logs/
 apps/server/openapi.json
 packages/core/src/generated/
 
+# Build outputs — should never be in version control
+*.vsix
+apps/vscode-extension/dist-vsix/
+apps/vscode-extension/out/
+apps/vscode-extension/media/webview/
+
 # Claude Code local settings
 .claude/settings.local.json

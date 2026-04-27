@@ -137,7 +137,16 @@
     "syncNow": "Sincronizar ahora",
     "lastSync": "Última sync: {when}",
     "needsPassphrase": "E2EE está activado pero la frase de paso no está desbloqueada — el sync está pausado.",
-    "resetDefaults": "Restablecer ajustes en tiempo de ejecución"
+    "resetDefaults": "Restablecer ajustes en tiempo de ejecución",
+    "themeLabel": "Tema",
+    "themeAuto": "Automático (seguir sistema)",
+    "themeLight": "Claro",
+    "themeDark": "Oscuro",
+    "themeHint": "Automático sigue el tema del host — el tema de VSCode dentro de VSCode, el modo claro/oscuro del SO en el resto. Elige Claro u Oscuro para anular.",
+    "ignoreCertsLabel": "Ignorar errores de certificado SSL",
+    "ignoreCertsHint": "Omitir la verificación TLS en peticiones salientes. Útil para servidores de desarrollo con certificados autofirmados o APIs corporativas cuya CA no está instalada localmente.",
+    "ignoreCertsWarning": "Activo. Los ataques man-in-the-middle sobre estas peticiones no serán detectados. Desactívalo al probar contra endpoints de producción.",
+    "ignoreCertsBrowserWarning": "En modo desarrollo del navegador, este último siempre valida los certificados; este ajuste no surte efecto. Ejecuta en Tauri o VSCode para que se aplique."
   },
   "about": {
     "title": "Acerca de Aelvory",

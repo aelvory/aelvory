@@ -151,6 +151,29 @@ async function confirmCreate() {
   selectedEnvId.value = env.id;
 }
 
+/**
+ * Duplicate the currently-selected environment. Names the copy
+ * "<source> (copy)", or "<source> (copy 2)", "(copy 3)", … to avoid
+ * a UNIQUE-name collision when the user duplicates the same env
+ * multiple times in a row.
+ */
+async function cloneEnv() {
+  const id = selectedEnvId.value;
+  if (!id) return;
+  const src = environments.environments.find((e) => e.id === id);
+  if (!src) return;
+
+  const existingNames = new Set(environments.environments.map((e) => e.name));
+  let candidate = `${src.name} (copy)`;
+  let n = 2;
+  while (existingNames.has(candidate)) {
+    candidate = `${src.name} (copy ${n++})`;
+  }
+
+  const newEnv = await environments.cloneEnvironment(id, candidate);
+  selectedEnvId.value = newEnv.id;
+}
+
 function deleteEnv() {
   const id = selectedEnvId.value;
   if (!id) return;
@@ -247,6 +270,15 @@ const selectedEnv = computed(
             class="name-input"
             @blur="saveName"
             @keydown.enter="saveName"
+          />
+          <Button
+            icon="pi pi-clone"
+            label="Duplicate"
+            severity="secondary"
+            text
+            size="small"
+            title="Copy this environment with all its variables"
+            @click="cloneEnv"
           />
           <Button
             icon="pi pi-trash"

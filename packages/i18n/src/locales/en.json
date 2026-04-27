@@ -145,7 +145,16 @@
     "syncNow": "Sync now",
     "lastSync": "Last sync: {when}",
     "needsPassphrase": "E2EE is enabled but the passphrase isn't unlocked — sync is paused.",
-    "resetDefaults": "Reset runtime settings"
+    "resetDefaults": "Reset runtime settings",
+    "themeLabel": "Theme",
+    "themeAuto": "Auto (follow system)",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeHint": "Auto follows the host theme — VSCode color theme inside VSCode, OS-level Light/Dark elsewhere. Pick Light or Dark to override.",
+    "ignoreCertsLabel": "Ignore SSL certificate errors",
+    "ignoreCertsHint": "Skip TLS verification on outgoing requests. Useful when hitting self-signed dev servers or corporate APIs whose CA isn't installed locally.",
+    "ignoreCertsWarning": "Active. Man-in-the-middle attacks on these requests will go undetected. Turn this off when testing against production endpoints.",
+    "ignoreCertsBrowserWarning": "In browser dev mode, the browser always validates certificates regardless of this setting. Run inside Tauri or VSCode for the toggle to take effect."
   },
   "about": {
     "title": "About Aelvory",

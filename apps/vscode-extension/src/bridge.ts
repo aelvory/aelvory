@@ -120,6 +120,14 @@ export interface HttpFetchPayload {
     body?: string;
     /** Hard cap to keep a stalled server from wedging the webview. */
     timeoutMs?: number;
+    /**
+     * Skip TLS certificate validation for this request. Honored by
+     * pointing fetch at a per-request undici Agent with
+     * `connect.rejectUnauthorized = false`. Use only against
+     * trusted self-signed / corporate-CA endpoints — there's a
+     * matching warning in the Settings UI.
+     */
+    insecure?: boolean;
   };
 }
 
@@ -215,11 +223,26 @@ export async function handleDriverMessage(
         ? setTimeout(() => ctrl.abort(), init.timeoutMs)
         : null;
       try {
+        // When the user opts into "ignore SSL errors", route the
+        // request through a per-call undici Agent with
+        // `rejectUnauthorized: false`. We instantiate the Agent on
+        // demand so the safe default (no insecure agent in the
+        // process) is preserved — there's no global state mutation.
+        // Node 22's global `fetch` is undici-backed and accepts the
+        // `dispatcher` init field.
+        let dispatcher: import('undici').Dispatcher | undefined;
+        if (init.insecure) {
+          const { Agent } = await import('undici');
+          dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
+        }
         const res = await fetch(msg.url, {
           method: init.method ?? 'GET',
           headers: init.headers,
           body: init.body,
           signal: ctrl.signal,
+          // `dispatcher` isn't on the standard RequestInit but
+          // Node's fetch (undici) honors it when present.
+          ...(dispatcher ? ({ dispatcher } as Record<string, unknown>) : {}),
           // Node's undici fetch follows redirects by default — the
           // final URL ends up in res.url. No CORS in the host.
         });

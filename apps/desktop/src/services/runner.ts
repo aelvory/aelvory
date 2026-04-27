@@ -46,8 +46,15 @@ export async function execute(
       // vscode-webview origin (i.e. nearly all of them). Route
       // through the extension host's Node fetch instead, which has
       // no CORS rules and matches Tauri's plugin-http behaviour.
+      const settings = useSettingsStore();
       const { vsHttpFetch } = await import('@/services/vscodeBridge');
-      return await executeViaFetch(resolved, vsHttpFetch);
+      // Wrap so the `insecure` setting flows into every request via
+      // the bridge init. The runner's `executeViaFetch` doesn't know
+      // about this transport-specific flag and just hands url+init
+      // to whatever fetcher we give it.
+      const fetcher = (input: string, fInit?: RequestInit) =>
+        vsHttpFetch(input, { ...fInit, insecure: settings.ignoreCerts });
+      return await executeViaFetch(resolved, fetcher);
     }
     return await executeViaFetch(resolved, fetch);
   } catch (err) {
@@ -159,6 +166,15 @@ async function executeViaTauri(request: ApiRequest): Promise<ExecuteResponse> {
   const init: RequestInit & {
     maxRedirections?: number;
     connectTimeout?: number;
+    // Tauri plugin-http extension. Passes through to reqwest's
+    // `danger_accept_invalid_certs` / `danger_accept_invalid_hostnames`
+    // when set on the Rust side. The plugin needs the
+    // `dangerous-settings` feature enabled for this to actually skip
+    // validation; see apps/desktop/src-tauri/Cargo.toml.
+    danger?: {
+      acceptInvalidCerts?: boolean;
+      acceptInvalidHostnames?: boolean;
+    };
   } = {
     method,
     headers,
@@ -168,6 +184,9 @@ async function executeViaTauri(request: ApiRequest): Promise<ExecuteResponse> {
   // Some HTTP methods can't carry a body per Fetch spec.
   if (body !== undefined && method !== 'GET' && method !== 'HEAD') {
     init.body = body;
+  }
+  if (settings.ignoreCerts) {
+    init.danger = { acceptInvalidCerts: true, acceptInvalidHostnames: true };
   }
 
   const res = await tFetch(request.url, init);

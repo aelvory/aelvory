@@ -42,6 +42,22 @@ const languageOptions = computed(() => [
   ...LOCALES.map((code) => ({ value: code, label: LOCALE_NAMES[code] })),
 ]);
 
+/**
+ * Theme picker. 'auto' delegates to the host (VSCode body class > OS
+ * prefers-color-scheme); 'light' / 'dark' force the picked palette.
+ */
+const themeOptions = computed(() => [
+  { value: 'auto' as const, label: t('settings.themeAuto') },
+  { value: 'light' as const, label: t('settings.themeLight') },
+  { value: 'dark' as const, label: t('settings.themeDark') },
+]);
+const themeMode = computed({
+  get: () => settings.themeMode,
+  set: (v) => {
+    settings.themeMode = v;
+  },
+});
+
 const userAgent = computed({
   get: () => settings.userAgent,
   set: (v) => {
@@ -469,11 +485,45 @@ async function doSyncNow() {
           :step="1000"
           show-buttons
         />
+
+        <div class="toggle-row mt">
+          <label for="ignoreCerts" class="toggle-label">
+            {{ t('settings.ignoreCertsLabel') }}
+          </label>
+          <ToggleSwitch
+            input-id="ignoreCerts"
+            v-model="settings.ignoreCerts"
+          />
+        </div>
+        <p class="hint">{{ t('settings.ignoreCertsHint') }}</p>
+        <Message
+          v-if="settings.ignoreCerts"
+          severity="warn"
+          :closable="false"
+          class="hint-msg"
+        >{{ t('settings.ignoreCertsWarning') }}</Message>
+        <Message
+          v-if="inBrowser"
+          severity="info"
+          :closable="false"
+          class="hint-msg"
+        >{{ t('settings.ignoreCertsBrowserWarning') }}</Message>
       </section>
 
       <section>
         <h3>{{ t('settings.sectionAppearance') }}</h3>
-        <label for="lang">{{ t('language.label') }}</label>
+        <label for="theme">{{ t('settings.themeLabel') }}</label>
+        <Select
+          id="theme"
+          v-model="themeMode"
+          :options="themeOptions"
+          option-label="label"
+          option-value="value"
+          class="w-full"
+        />
+        <p class="hint">{{ t('settings.themeHint') }}</p>
+
+        <label for="lang" class="mt">{{ t('language.label') }}</label>
         <Select
           id="lang"
           v-model="settings.language"
@@ -775,6 +825,16 @@ label {
   margin-top: 0.3rem;
 }
 .mt { margin-top: 0.75rem; }
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.toggle-label {
+  flex: 1;
+  font-size: 0.9rem;
+}
 .w-full { width: 100%; }
 .hint {
   margin: 0.2rem 0 0 0;

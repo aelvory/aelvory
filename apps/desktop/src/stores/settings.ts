@@ -1,8 +1,20 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { applyLocaleFromSettings, isSupportedLocale, type Locale } from '@/i18n';
+import { setThemeOverride } from '@/composables/theme';
 
 const STORAGE_KEY = 'aelvory.settings';
+
+/**
+ * Theme override:
+ *   - 'auto' → follow the host (VSCode body class first, then the OS
+ *     `prefers-color-scheme`). Default.
+ *   - 'light' / 'dark' → force the picked mode regardless of host.
+ *
+ * The composables/theme.ts tracker reads this and short-circuits the
+ * auto-detection when a manual override is set.
+ */
+export type ThemeMode = 'auto' | 'light' | 'dark';
 
 interface SettingsData {
   userAgent: string;
@@ -14,6 +26,23 @@ interface SettingsData {
    * one of the supported locale codes from @aelvory/i18n.
    */
   language: Locale | '';
+  /** Light/dark/auto override. See ThemeMode for semantics. */
+  themeMode: ThemeMode;
+  /**
+   * Skip TLS certificate verification on outgoing HTTP/WS requests.
+   * Useful for local development against self-signed certs or
+   * corporate CAs that aren't installed on the user's machine.
+   *
+   * Only honored in Tauri (via plugin-http's `danger.acceptInvalidCerts`)
+   * and inside the VSCode extension host (via an undici Agent with
+   * `rejectUnauthorized: false`). Bare-browser fetch always verifies
+   * — there's no JS-level escape from that.
+   *
+   * Big footgun if left on against production: man-in-the-middle
+   * attacks become invisible. We surface a prominent warning in the
+   * Settings UI and never default this to true.
+   */
+  ignoreCerts: boolean;
 }
 
 /**
@@ -36,11 +65,17 @@ const ENV_DEFAULT_SYNC_URL =
     'https://eu.aelvory.com') as string;
 
 const DEFAULTS: SettingsData = {
-  userAgent: 'Aelvory/0.0.2',
+  userAgent: 'Aelvory/0.0.3',
   timeoutMs: 60_000,
   syncServerUrl: '',
   language: '',
+  themeMode: 'auto',
+  ignoreCerts: false,
 };
+
+function isThemeMode(v: unknown): v is ThemeMode {
+  return v === 'auto' || v === 'light' || v === 'dark';
+}
 
 function load(): SettingsData {
   try {
@@ -74,10 +109,20 @@ export const useSettingsStore = defineStore('settings', () => {
   const language = ref<Locale | ''>(
     isSupportedLocale(initial.language) ? initial.language : '',
   );
+  const themeMode = ref<ThemeMode>(
+    isThemeMode(initial.themeMode) ? initial.themeMode : 'auto',
+  );
+  const ignoreCerts = ref<boolean>(initial.ignoreCerts === true);
 
   // Apply the active locale once at boot. The watcher below keeps it
   // in sync if the user changes the picker.
   applyLocaleFromSettings(language.value || null);
+
+  // Push the persisted theme override into the tracker on boot, then
+  // again on every change. The tracker handles the 'auto' case by
+  // falling back to host detection (VSCode body class / prefers-color-scheme).
+  setThemeOverride(themeMode.value);
+  watch(themeMode, (next) => setThemeOverride(next));
 
   function persist() {
     try {
@@ -88,6 +133,8 @@ export const useSettingsStore = defineStore('settings', () => {
           timeoutMs: timeoutMs.value,
           syncServerUrl: syncServerUrl.value,
           language: language.value,
+          themeMode: themeMode.value,
+          ignoreCerts: ignoreCerts.value,
         }),
       );
     } catch {
@@ -95,7 +142,10 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  watch([userAgent, timeoutMs, syncServerUrl, language], persist);
+  watch(
+    [userAgent, timeoutMs, syncServerUrl, language, themeMode, ignoreCerts],
+    persist,
+  );
 
   watch(language, (next) => {
     applyLocaleFromSettings(next || null);
@@ -106,6 +156,8 @@ export const useSettingsStore = defineStore('settings', () => {
     timeoutMs.value = DEFAULTS.timeoutMs;
     syncServerUrl.value = DEFAULTS.syncServerUrl;
     language.value = DEFAULTS.language;
+    themeMode.value = DEFAULTS.themeMode;
+    ignoreCerts.value = DEFAULTS.ignoreCerts;
   }
 
   /**
@@ -134,6 +186,8 @@ export const useSettingsStore = defineStore('settings', () => {
     timeoutMs,
     syncServerUrl,
     language,
+    themeMode,
+    ignoreCerts,
     resetDefaults,
     setSyncServerUrl,
     effectiveSyncUrl,

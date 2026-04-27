@@ -140,6 +140,42 @@ export const useEnvironmentsStore = defineStore('environments', () => {
     return v;
   }
 
+  /**
+   * Duplicate an environment, copying every variable (including
+   * secrets) into a new env with the picked name. Convenient when
+   * cloning dev → staging or per-customer config sets.
+   *
+   * Variables are recreated via upsertVariable so their reactive
+   * cache stays consistent and any server-side validation runs again
+   * (the server may decide to wrap secrets differently per env).
+   *
+   * Pulls source variables fresh from the server before copying — if
+   * we cloned from the local cache, partially-loaded envs would
+   * silently lose values. Slightly more network but worth it.
+   */
+  async function cloneEnvironment(srcId: string, newName: string): Promise<ApiEnvironment> {
+    if (!currentProjectId.value) throw new Error('no_project');
+    const src = environments.value.find((e) => e.id === srcId);
+    if (!src) throw new Error('source_env_not_found');
+
+    // Always fetch — local cache might be empty for an env the user
+    // never opened in the EnvironmentsDialog.
+    const srcVars = await api<Variable[]>(
+      `/api/projects/${currentProjectId.value}/environments/${srcId}/variables`,
+    );
+
+    const dst = await createEnvironment(newName);
+
+    for (const v of srcVars) {
+      // Skip empty rows — createEnvironment yields an empty list and
+      // we want the clone to mirror the source's content, not pad
+      // it with `{ key: '', value: '' }` placeholders.
+      if (!v.key) continue;
+      await upsertVariable(dst.id, v.key, v.value ?? null, v.isSecret);
+    }
+    return dst;
+  }
+
   async function deleteVariable(envId: string, variableId: string): Promise<void> {
     if (!currentProjectId.value) throw new Error('no_project');
     await api(
@@ -170,6 +206,7 @@ export const useEnvironmentsStore = defineStore('environments', () => {
     loadVariables,
     setActiveEnvironment,
     createEnvironment,
+    cloneEnvironment,
     updateEnvironment,
     deleteEnvironment,
     upsertVariable,

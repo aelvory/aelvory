@@ -2,7 +2,7 @@
   "name": "aelvory-vscode",
   "displayName": "Aelvory",
   "description": "Aelvory API testing inside VSCode",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "publisher": "aelvory",
   "icon": "icon.png",
@@ -142,6 +142,7 @@
     "package": "pnpm run build && vsce package --no-dependencies"
   },
   "dependencies": {
+    "undici": "^7.4.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

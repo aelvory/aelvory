@@ -3,6 +3,15 @@ import { ref } from 'vue';
 import InputText from 'primevue/inputtext';
 import VarAutocomplete from './VarAutocomplete.vue';
 
+// Multi-root component (the InputText + the autocomplete dropdown).
+// Without `inheritAttrs: false` Vue would try to forward parent attrs
+// to BOTH roots and warn; we instead route them explicitly to the
+// InputText below via `v-bind="$attrs"`. This is what makes
+// `<VarInputText class="url-input">` actually apply the class to the
+// underlying <input> — without it, the class lands on nothing and
+// any `flex: 1` / width rule appears to be ignored.
+defineOptions({ inheritAttrs: false });
+
 const model = defineModel<string | undefined>();
 // `Booleanish` mirrors @vue/runtime-dom's HTML-attribute boolean type
 // (boolean or the string literals 'true' | 'false'). We narrow to it so
@@ -50,6 +59,7 @@ function onBlur(e: FocusEvent) {
   <InputText
     ref="inputRef"
     v-model="model"
+    v-bind="$attrs"
     :placeholder="placeholder"
     :spellcheck="spellcheck"
     :type="type"

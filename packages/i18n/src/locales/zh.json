@@ -137,7 +137,16 @@
     "syncNow": "立即同步",
     "lastSync": "上次同步:{when}",
     "needsPassphrase": "E2EE 已启用,但口令尚未解锁 — 同步已暂停。",
-    "resetDefaults": "重置运行时设置"
+    "resetDefaults": "重置运行时设置",
+    "themeLabel": "主题",
+    "themeAuto": "自动（跟随系统）",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "themeHint": "自动跟随宿主主题：在 VSCode 中跟随编辑器配色，否则跟随系统的浅色/深色设置。选择浅色或深色可手动覆盖。",
+    "ignoreCertsLabel": "忽略 SSL 证书错误",
+    "ignoreCertsHint": "跳过出站请求的 TLS 验证。适用于自签名开发服务器或本地未安装其根证书的企业 API。",
+    "ignoreCertsWarning": "已启用。这些请求面临的中间人攻击将无法被发现。对生产环境测试时请关闭此选项。",
+    "ignoreCertsBrowserWarning": "浏览器开发模式始终会校验证书，此开关在浏览器中无效。请在 Tauri 或 VSCode 中运行以使其生效。"
   },
   "about": {
     "title": "关于 Aelvory",

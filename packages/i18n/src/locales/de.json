@@ -137,7 +137,16 @@
     "syncNow": "Jetzt synchronisieren",
     "lastSync": "Letzter Sync: {when}",
     "needsPassphrase": "E2EE ist aktiviert, aber die Passphrase ist nicht entsperrt — der Sync ist pausiert.",
-    "resetDefaults": "Laufzeiteinstellungen zurücksetzen"
+    "resetDefaults": "Laufzeiteinstellungen zurücksetzen",
+    "themeLabel": "Design",
+    "themeAuto": "Auto (System folgen)",
+    "themeLight": "Hell",
+    "themeDark": "Dunkel",
+    "themeHint": "Auto übernimmt das Host-Design — in VSCode das Editor-Theme, sonst die OS-Einstellung. Wähle Hell oder Dunkel zum Überschreiben.",
+    "ignoreCertsLabel": "SSL-Zertifikatsfehler ignorieren",
+    "ignoreCertsHint": "TLS-Validierung bei ausgehenden Requests überspringen. Praktisch bei selbstsignierten Dev-Servern oder Firmen-APIs, deren CA lokal nicht installiert ist.",
+    "ignoreCertsWarning": "Aktiv. Man-in-the-Middle-Angriffe auf diese Requests bleiben unentdeckt. Bei Tests gegen Produktionssysteme bitte ausschalten.",
+    "ignoreCertsBrowserWarning": "Im Browser-Dev-Modus prüft der Browser die Zertifikate immer — diese Einstellung greift dort nicht. In Tauri oder VSCode wirkt sie korrekt."
   },
   "about": {
     "title": "Über Aelvory",

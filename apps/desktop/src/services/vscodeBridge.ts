@@ -77,7 +77,21 @@ interface HttpFetchResultWire {
  * (`syncClient.fetchJson`, `runner.ts`, etc.) get the same API
  * surface as native fetch — `.ok`, `.json()`, `.text()`, `.headers.get()`.
  */
-export async function vsHttpFetch(url: string, init: RequestInit = {}): Promise<Response> {
+/**
+ * Extension to RequestInit for the VSCode bridge transport. We can't
+ * widen the global RequestInit type, so callers wanting to opt in
+ * cast the init object to this type. Other transports (Tauri,
+ * native fetch) ignore `insecure`.
+ */
+export interface VsHttpFetchInit extends RequestInit {
+  /** Skip TLS validation in the host. See bridge.ts for the dispatcher wiring. */
+  insecure?: boolean;
+}
+
+export async function vsHttpFetch(
+  url: string,
+  init: VsHttpFetchInit = {},
+): Promise<Response> {
   // Body needs to be string — see bridge.ts for why structured clone
   // doesn't carry FormData / Blob / streams cleanly. Today the only
   // bodies we send are JSON, which the caller has already
@@ -118,6 +132,7 @@ export async function vsHttpFetch(url: string, init: RequestInit = {}): Promise<
       // AbortController, but the host has its own ceiling too —
       // belt and suspenders against a stuck Node fetch.
       timeoutMs: 20_000,
+      insecure: init.insecure === true,
     },
   });
 

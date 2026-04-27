@@ -20,8 +20,16 @@
  */
 
 type Mode = 'light' | 'dark';
+type Override = 'auto' | Mode;
 
 const DARK_CLASS = 'dark';
+
+// User-facing theme override — set by the Settings UI via
+// `setThemeOverride()`. 'auto' falls back to host-detected mode
+// (the original VSCode-class > prefers-color-scheme chain). 'light'
+// or 'dark' force the picked palette regardless of host.
+let override: Override = 'auto';
+let recomputeRef: (() => void) | null = null;
 
 function readVSCodeMode(): Mode | null {
   if (typeof document === 'undefined') return null;
@@ -65,10 +73,16 @@ export function installThemeTracker(): () => void {
   w.__aelvoryThemeInstalled = true;
 
   const recompute = () => {
-    const mode = readVSCodeMode() ?? readSystemMode();
+    // Manual override wins. Only fall through to host detection when
+    // the user hasn't picked Light or Dark themselves.
+    const mode: Mode =
+      override === 'light' || override === 'dark'
+        ? override
+        : (readVSCodeMode() ?? readSystemMode());
     applyMode(mode);
   };
 
+  recomputeRef = recompute;
   recompute();
 
   // VSCode swaps the body class set when the user changes theme.
@@ -91,6 +105,19 @@ export function installThemeTracker(): () => void {
   return () => {
     observer.disconnect();
     mql?.removeEventListener('change', recompute);
+    recomputeRef = null;
     delete w.__aelvoryThemeInstalled;
   };
+}
+
+/**
+ * Apply (or release) a manual theme override. Called from the
+ * settings store when the user picks Light / Dark / Auto in the
+ * Settings dialog. Idempotent + safe to call before
+ * `installThemeTracker()` ran (the override is captured and
+ * applied on the first install).
+ */
+export function setThemeOverride(mode: Override): void {
+  override = mode;
+  recomputeRef?.();
 }
