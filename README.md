@@ -1,3 +1,5 @@
+[![desktop-release](https://github.com/aelvory/aelvory/actions/workflows/desktop-release.yml/badge.svg)](https://github.com/aelvory/aelvory/actions/workflows/desktop-release.yml)
+[![vscode-extension](https://github.com/aelvory/aelvory/actions/workflows/vscode-extension.yml/badge.svg)](https://github.com/aelvory/aelvory/actions/workflows/vscode-extension.yml)
 # Aelvory
 
 A local-first, sync-capable API testing platform. Build collections of HTTP
