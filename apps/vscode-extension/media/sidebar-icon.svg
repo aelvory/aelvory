@@ -1,0 +1,16 @@
+<!--
+  Activity-bar icon. VSCode tints monochrome SVGs to the active theme
+  color (foreground in dark themes, similar in light themes), so we
+  use `currentColor` and a single fill rather than the full blue-A
+  brand mark. Keeping it as a stylised triangular A keeps the
+  silhouette recognisable next to other extensions' Git/Search/etc.
+  glyphs.
+
+  Designed at 24x24 — VSCode renders activity-bar icons at 24px and
+  scales down to 20px for the badge state. Stroke widths chosen so
+  the shape stays crisp at both sizes.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M4 21 L12 4 L20 21" />
+  <path d="M7.5 14.5 L16.5 14.5" />
+</svg>

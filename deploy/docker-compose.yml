@@ -1,0 +1,122 @@
+# Production-style compose for Aelvory.
+#
+# What runs:
+#   - postgres        — bundled DB
+#   - aelvory-server  — .NET API (private to the compose network)
+#   - aelvory-web     — Caddy serving the admin SPA + reverse-proxy
+#                       to the API. Only public-facing service.
+#
+# Bring up:
+#   cd deploy
+#   cp .env.example .env
+#   # edit .env — at minimum, set JWT_SIGNING_KEY and POSTGRES_PASSWORD
+#
+#   # First boot against a fresh DB — apply schema migrations:
+#   RUN_MIGRATIONS=true docker compose up -d
+#
+#   # Subsequent restarts:
+#   docker compose up -d
+#
+# Once healthy, browse:
+#   http://localhost/app/         (admin SPA)
+#   http://localhost/api/...      (API; same origin, no CORS)
+#   http://localhost/             (redirects to /app/ until a
+#                                  marketing site lives there)
+#
+# Public deploy with a real domain + TLS:
+#   set AELVORY_DOMAIN=eu.aelvory.com in .env, point DNS at the host,
+#   and Caddy will fetch a Let's Encrypt cert automatically on first
+#   boot. Ports 80 + 443 must be reachable from the internet.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aelvory-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aelvory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-aelvory}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    # Postgres is internal only. Uncomment if you need an external
+    # admin tool to connect.
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aelvory}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  aelvory-server:
+    image: aismart/aelvory-server:${AELVORY_SERVER_TAG:-latest}
+    container_name: aelvory-server
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-aelvory};Username=${POSTGRES_USER:-aelvory};Password=${POSTGRES_PASSWORD}"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?JWT_SIGNING_KEY is required (>=32 bytes of randomness)}
+      Jwt__Issuer: ${JWT_ISSUER:-aelvory}
+      Jwt__Audience: ${JWT_AUDIENCE:-aelvory-clients}
+      # Apply EF Core migrations on startup. Set to `true` for the first
+      # boot against a fresh DB, then leave at `false` for rolling
+      # restarts so deploys don't change schema by surprise. The server
+      # crashes (and the orchestrator restarts it) on migration failure
+      # in non-Dev, so partial-state surprises propagate instead of
+      # silently starting on a stale schema.
+      #
+      # Quoted on purpose — bare `true`/`false` here would be parsed as
+      # YAML booleans and lose the string type the .NET config provider
+      # expects.
+      RUN_MIGRATIONS: "${RUN_MIGRATIONS:-false}"
+    expose:
+      - "8080"
+    # No host port: only the web container talks to the API, on the
+    # internal compose network. Set AELVORY_SERVER_PORT in .env to
+    # publish 8080 to the host if you need direct curl access.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--show-error", "--fail", "--max-time", "4", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  aelvory-web:
+    image: aismart/aelvory-web:${AELVORY_WEB_TAG:-latest}
+    container_name: aelvory-web
+    restart: unless-stopped
+    environment:
+      # When set, Caddy negotiates a Let's Encrypt cert for this domain
+      # and serves on 80 + 443. When unset/empty, fall back to `:80` —
+      # a valid Caddy address (port 80, all interfaces, no hostname).
+      #
+      # Why not `${AELVORY_DOMAIN:-}`: Caddy's `{$VAR:default}` syntax
+      # only substitutes the Caddyfile-side default when the env var
+      # is UNSET, not when it's empty. Passing empty here leaves the
+      # site address blank, which Caddy parses as a global options
+      # block opener — and `encode` is not a valid global option, so
+      # the container crash-loops with "unrecognized global option:
+      # encode". The compose-side `:-:80` ensures we always pass
+      # something Caddy can actually parse.
+      AELVORY_DOMAIN: ${AELVORY_DOMAIN:-:80}
+    ports:
+      - "${AELVORY_HTTP_PORT:-80}:80"
+      - "${AELVORY_HTTPS_PORT:-443}:443"
+    volumes:
+      # caddy_data persists the auto-fetched ACME certs across restarts
+      # so Let's Encrypt rate limits don't bite on every reboot.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      aelvory-server:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:

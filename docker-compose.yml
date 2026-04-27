@@ -1,0 +1,200 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aelvory-postgres
+    environment:
+      POSTGRES_USER: aelvory
+      POSTGRES_PASSWORD: aelvory_dev
+      POSTGRES_DB: aelvory
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aelvory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aelvory-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: aelvory-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: aelvory
+      MINIO_ROOT_PASSWORD: aelvory_dev_secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    container_name: aelvory-server
+    working_dir: /src/apps/server
+    command:
+      - /bin/sh
+      - -c
+      - |
+        dotnet watch run --no-launch-profile --urls 'http://+:5000'
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # `+` binds Kestrel to all interfaces on BOTH IPv4 and IPv6.
+      # Docker's port mapping forwards both 0.0.0.0:5000 and [::]:5000
+      # to the container, and Windows' default `localhost` resolves to
+      # ::1 first — so binding only to 0.0.0.0 means localhost from the
+      # host gets a "connection refused" on the IPv6 path with no
+      # fallback (Docker forwards it, container has no listener).
+      ASPNETCORE_URLS: http://+:5000
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
+      DOTNET_WATCH_RESTART_ON_RUDE_EDIT: "1"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=aelvory;Username=aelvory;Password=aelvory_dev"
+      ConnectionStrings__Redis: "redis:6379"
+      Jwt__SigningKey: "dev-only-signing-key-replace-me-min-32-bytes-long-please-rotate"
+      Jwt__Issuer: "aelvory"
+      Jwt__Audience: "aelvory-clients"
+    volumes:
+      - ./:/src
+      - server_nuget:/root/.nuget/packages
+      - server_bin:/src/apps/server/bin
+      - server_obj:/src/apps/server/obj
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Admin SPA dev server — Vite hot reload of apps/web/.
+  #
+  # Replaces the previous `web` service which ran the desktop app's
+  # Vite in a browser; that path was always degraded (no Tauri APIs,
+  # CORS to the API), and the real dev loop for the desktop is
+  # `pnpm --filter @aelvory/desktop tauri dev` from the host.
+  #
+  # The admin SPA is the thing that actually makes sense in a browser —
+  # this is where you go when you want to manage members, projects, and
+  # per-project access. URL: http://localhost:5173/app/
+  web:
+    image: node:22-alpine
+    container_name: aelvory-web
+    # Mount under /repo, NOT /app — the admin SPA's vite.config.ts has
+    # `base: '/app/'`, and Vite has a quirk where the URL base
+    # colliding with a real filesystem prefix mangles plugin-vue's
+    # readFileSync paths (it strips `/app/` from absolute paths
+    # thinking they're URLs). Keeping workdir + the /app base config
+    # disjoint avoids the collision.
+    working_dir: /repo
+    command:
+      - /bin/sh
+      - -c
+      - |
+        corepack enable &&
+        corepack prepare pnpm@9.12.0 --activate &&
+        pnpm --filter "@aelvory/web..." install &&
+        pnpm --filter @aelvory/web dev
+    environment:
+      # Vite's proxy needs the API on the compose network, not the host.
+      VITE_API_TARGET: http://server:5000
+      CHOKIDAR_USEPOLLING: "true"
+      PNPM_HOME: /pnpm
+      PATH: /pnpm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - ./:/repo
+      - web_pnpm_store:/pnpm
+      # Per-container node_modules so the host's pnpm symlinks (broken
+      # for Linux paths) don't get in the way and we don't clobber the
+      # host's hoisting on every restart.
+      - web_root_modules:/repo/node_modules
+      - web_admin_modules:/repo/apps/web/node_modules
+      - web_i18n_modules:/repo/packages/i18n/node_modules
+      - web_core_modules:/repo/packages/core/node_modules
+    ports:
+      # Host 5174 ↔ container 5174 — matches the Vite port set in
+      # apps/web/vite.config.ts and leaves host port 5173 free for the
+      # desktop app's `tauri dev` Vite (whose `tauri.conf.json` has
+      # devUrl=http://localhost:5173 hardcoded). Result: you can run
+      # `docker compose up -d` AND `pnpm --filter @aelvory/desktop
+      # tauri dev` at the same time without a port collision.
+      - "5174:5174"
+    depends_on:
+      - server
+
+  # Marketing landing page for aelvory.com. Pure static (HTML + CSS +
+  # SVG) served by Caddy. Runs independently of the API server / admin
+  # SPA — Cloudflare in front maps aelvory.com → this container, and
+  # eu.aelvory.com (or wherever the API lives) → the `web` service.
+  #
+  # Local: visit http://localhost:8080
+  # Prod: bind a Cloudflare Tunnel (or `ports: - "80:80"`) to this
+  # container and set AELVORY_LANDING_DOMAIN=aelvory.com if you want
+  # Caddy to manage its own cert. Behind a Cloudflare proxy with
+  # "Flexible" / "Full" SSL the default :80 binding is fine.
+  landing:
+    build:
+      context: ./apps/landing
+    container_name: aelvory-landing
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    # No depends_on — the landing site is fully self-contained, so it
+    # boots and serves even when the rest of the stack is down.
+
+  tools:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    profiles: ["tools"]
+    working_dir: /src
+    environment:
+      DOTNET_ROLL_FORWARD: Major
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=aelvory;Username=aelvory;Password=aelvory_dev"
+      Jwt__SigningKey: "dev-only-signing-key-replace-me-min-32-bytes-long-please-rotate"
+      Jwt__Issuer: "aelvory"
+      Jwt__Audience: "aelvory-clients"
+    volumes:
+      - ./:/src
+      - server_nuget:/root/.nuget/packages
+      - tools_dotnet:/root/.dotnet
+      - server_bin:/src/apps/server/bin
+      - server_obj:/src/apps/server/obj
+    # Silent tool restore before running whatever command you pass.
+    # Usage: docker compose run --rm tools dotnet nswag run nswag.json
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'dotnet tool restore >/dev/null 2>&1; exec "$$@"'
+      - '--'
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
+  server_nuget:
+  server_bin:
+  server_obj:
+  tools_dotnet:
+  web_pnpm_store:
+  web_root_modules:
+  web_admin_modules:
+  web_i18n_modules:
+  web_core_modules:

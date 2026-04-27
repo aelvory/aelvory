@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "rollForward": false,
+  "tools": {
+    "dotnet-ef": {
+      "version": "10.0.0",
+      "commands": ["dotnet-ef"]
+    },
+    "nswag.consolecore": {
+      "version": "14.5.0",
+      "commands": ["nswag"]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+.vscode/**
+src/**
+.gitignore
+.eslintrc.json
+**/*.map
+**/tsconfig.json
+esbuild.mjs
+
+# The extension is a single bundled out/extension.js (esbuild) and
+# the webview is a static media/webview/ tree. sql.js's WASM is
+# inlined into the webview bundle, so there's nothing in node_modules
+# the runtime needs.
+node_modules/**
+
+*.vsix

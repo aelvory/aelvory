@@ -1,0 +1,10 @@
+<!--
+  Aelvory wordmark + glyph for the landing page. The triangular A
+  with a crossbar matches the desktop app icon and the VSCode
+  activity-bar icon. `currentColor` lets the same SVG inherit the
+  surrounding text color so it works in both light and dark modes.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+  <path d="M5 27 L16 4 L27 27" />
+  <path d="M9.5 19 L22.5 19" />
+</svg>

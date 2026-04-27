@@ -1,0 +1,62 @@
+# Caddyfile baked into the aismart/aelvory-web image. Serves the
+# admin SPA at /app/, reverse-proxies /api/* and /hubs/* to the
+# aelvory-server container, and redirects bare / to the SPA until a
+# marketing site lives there.
+#
+# {$AELVORY_DOMAIN::80} resolves to:
+#   - the env var when set (e.g. "eu.aelvory.com") — Caddy negotiates
+#     a Let's Encrypt cert automatically and serves on 80 + 443
+#   - ":80" otherwise — local docker-compose use, plain HTTP
+
+{$AELVORY_DOMAIN::80} {
+    # Per-request access log to stdout. Caddy v2 doesn't log access by
+    # default — without this, "no requests in the log" tells you
+    # nothing about whether traffic is actually arriving (especially
+    # painful behind a Cloudflare Tunnel where you can't see the
+    # request leg). Format is JSON; docker logs picks it up alongside
+    # the structured startup log.
+    log {
+        output stdout
+    }
+
+    encode gzip zstd
+
+    # API + SignalR — same compose network, no public port on the
+    # server container required.
+    handle /api/* {
+        reverse_proxy aelvory-server:8080
+    }
+    handle /hubs/* {
+        reverse_proxy aelvory-server:8080
+    }
+
+    # Bare / and /app (no trailing slash) → /app/. Two reasons this
+    # is its own block instead of the more obvious `handle { redir
+    # /app/ permanent }`:
+    #
+    #   1. `redir /app/ permanent` is MISPARSED — the Caddyfile parser
+    #      treats any first arg starting with `/` as a path matcher,
+    #      so it reads as "match path /app/, redirect to URL
+    #      `permanent`", which is nonsense. The redirect never fires.
+    #      Using a named matcher disambiguates.
+    #
+    #   2. `/app/*` doesn't match a bare `/app` request (the matcher
+    #      requires the trailing slash and at least one more char).
+    #      Without explicit handling, /app falls through to nothing
+    #      and Caddy writes an empty 0-byte response — the
+    #      "mysterious blank page" failure mode this Caddyfile used
+    #      to have in production.
+    @needs_redirect path / /app
+    redir @needs_redirect /app/ permanent
+
+    # Admin SPA. Vite built with `base: '/app/'`, so static asset URLs
+    # in the HTML already include the prefix. handle_path strips the
+    # /app/ before file lookup; flat assets in /srv/spa match.
+    # try_files falls back to index.html so Vue Router can resolve
+    # client-side routes like /app/orgs/abc/members on a hard reload.
+    handle_path /app/* {
+        root * /srv/spa
+        try_files {path} /index.html
+        file_server
+    }
+}

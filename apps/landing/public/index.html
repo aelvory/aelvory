@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aelvory — open-source API testing toolbox</title>
+    <meta
+      name="description"
+      content="Aelvory is an open-source API testing toolbox: HTTP and WebSocket testing, end-to-end encrypted sync across machines, and a single Vue UI shipped as a Tauri desktop app and a VSCode extension."
+    />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="canonical" href="https://aelvory.com/" />
+
+    <!-- Open Graph / social -->
+    <meta property="og:title" content="Aelvory — open-source API testing toolbox" />
+    <meta
+      property="og:description"
+      content="HTTP + WebSocket testing, encrypted sync, scripts, multi-platform. Self-hostable. Open source."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://aelvory.com/" />
+
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a href="#top" class="brand">
+        <img src="/assets/logo.svg" alt="" class="brand-glyph" />
+        <span class="brand-name">Aelvory</span>
+      </a>
+      <nav class="navlinks" aria-label="Sections">
+        <a href="#features">Features</a>
+        <a href="#platforms">Platforms</a>
+        <a href="#self-host">Self-host</a>
+        <a href="https://github.com/aelvory" rel="noopener">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <!-- Hero -->
+      <section class="hero">
+        <h1>API testing that travels with you.</h1>
+        <p class="lede">
+          Aelvory is an open-source toolbox for hitting HTTP APIs and WebSocket
+          endpoints. Same Vue UI, same encrypted sync, three places to run it:
+          a Tauri desktop app, a VSCode extension, and a self-hostable sync
+          server.
+        </p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://github.com/aelvory/aelvory/releases" rel="noopener">
+            Download
+          </a>
+          <a class="btn secondary" href="https://github.com/aelvory" rel="noopener">
+            View on GitHub
+          </a>
+        </div>
+        <p class="hero-note">
+          Free. No sign-up to use locally. Sync only when you opt in.
+        </p>
+      </section>
+
+      <!-- Features -->
+      <section class="section" id="features">
+        <h2>What's in the toolbox</h2>
+        <div class="grid features">
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">
+                <path d="M4 12h16M12 4v16" />
+              </svg>
+            </div>
+            <h3>HTTP requests</h3>
+            <p>
+              Methods, headers, bodies (raw, form, GraphQL), pre/post scripts
+              with assertions, response viewer with pretty-printed JSON / XML
+              and search. cURL paste-and-import.
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">
+                <path d="M3 12c0-4 3-8 9-8s9 4 9 8-3 8-9 8" />
+                <path d="M3 12l4-3M3 12l4 3" />
+              </svg>
+            </div>
+            <h3>WebSocket testing</h3>
+            <p>
+              Open ws:// / wss:// connections, save a library of named
+              messages, fire them with one click, and read the live log
+              with collapsible bursts. Built for chatty real-time APIs.
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">
+                <path d="M4 4h12l4 4v12H4z" />
+                <path d="M9 9h6v3H9z" />
+                <path d="M9 17v-2" />
+              </svg>
+            </div>
+            <h3>Encrypted sync</h3>
+            <p>
+              Argon2id-derived key wraps a per-organization data key with
+              XChaCha20-Poly1305. Your secrets stay encrypted on the server;
+              only your devices have the keys. Last-writer-wins per row.
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">
+                <path d="M5 7l4-3 4 3 4-3v13l-4 3-4-3-4 3z" />
+              </svg>
+            </div>
+            <h3>Collections &amp; environments</h3>
+            <p>
+              Nest collections to any depth, inherit auth and variables from
+              parents, scope variables per environment. Switch envs from a
+              picker — same requests against dev / staging / prod.
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">
+                <path d="M4 17l6-6 4 4 6-6" />
+                <path d="M14 7h6v6" />
+              </svg>
+            </div>
+            <h3>Scripts &amp; tests</h3>
+            <p>
+              JavaScript pre-request and post-response hooks. Set environment
+              vars, assert with <code>aelvory.expect</code>, log to the in-app
+              console. A green dot marks tabs that have active code.
+            </p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">
+                <path d="M3 7l9-4 9 4-9 4z" />
+                <path d="M3 12l9 4 9-4" />
+                <path d="M3 17l9 4 9-4" />
+              </svg>
+            </div>
+            <h3>Imports &amp; captures</h3>
+            <p>
+              OpenAPI / Swagger (JSON or YAML, file or URL), Postman v2.1,
+              Insomnia exports, HAR captures. Pick a file in your file
+              manager — or right-click in VSCode's Explorer.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <!-- Platforms -->
+      <section class="section alt" id="platforms">
+        <h2>Three ways to run it</h2>
+        <div class="grid platforms">
+          <article class="platform">
+            <h3>Desktop app</h3>
+            <p>
+              A Tauri 2 build (Rust + system webview). Native menus, OS file
+              dialogs, no Electron bloat. Around 10 MB installed.
+            </p>
+            <ul class="platform-meta">
+              <li>Windows · macOS · Linux</li>
+              <li>x64 + arm64 where supported</li>
+            </ul>
+          </article>
+
+          <article class="platform">
+            <h3>VSCode extension</h3>
+            <p>
+              The same Vue UI inside a webview tab, with a sidebar showing
+              workspace status and quick actions. SQLite is sql.js
+              (WebAssembly), so a single .vsix runs everywhere.
+            </p>
+            <ul class="platform-meta">
+              <li>Marketplace: search "Aelvory"</li>
+              <li>Or install from <code>.vsix</code></li>
+            </ul>
+          </article>
+
+          <article class="platform">
+            <h3>Sync server</h3>
+            <p>
+              Optional. ASP.NET Core 10 + Postgres + Redis, distributed via
+              container image. Run it on your own infra; your devices sync
+              through it without exposing plaintext secrets.
+            </p>
+            <ul class="platform-meta">
+              <li>Docker / Compose</li>
+              <li>SignalR realtime</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <!-- Self-host -->
+      <section class="section" id="self-host">
+        <h2>Open source. Self-hostable. Yours.</h2>
+        <p class="section-lede">
+          Aelvory is built in the open under permissive licensing. No
+          telemetry. The desktop app and the extension run fully offline by
+          default — sync is opt-in, points at whatever server URL you
+          configure, and ships nothing in plaintext.
+        </p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://github.com/aelvory/aelvory" rel="noopener">
+            Browse the source
+          </a>
+          <a class="btn secondary" href="https://github.com/aelvory/aelvory/issues" rel="noopener">
+            Report an issue
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <img src="/assets/logo.svg" alt="" class="brand-glyph small" />
+          <span>Aelvory</span>
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/aelvory" rel="noopener">GitHub</a>
+          <a href="https://github.com/aelvory/aelvory/issues" rel="noopener">Issues</a>
+          <a href="https://github.com/aelvory/aelvory/releases" rel="noopener">Releases</a>
+        </div>
+        <div class="footer-credit">
+          Made by <strong>joetom</strong> at <strong>aiSmart</strong>.
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

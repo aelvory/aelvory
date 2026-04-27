@@ -1,0 +1,43 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.pdb
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+.pnpm-store/
+*.local
+
+# Rust / Tauri
+target/
+
+# IDEs
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Generated
+apps/server/openapi.json
+packages/core/src/generated/
+
+# Claude Code local settings
+.claude/settings.local.json

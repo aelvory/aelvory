@@ -1,0 +1,50 @@
+# Caddyfile baked into the aismart/aelvory-landing image. Serves the
+# static landing site at the root.
+#
+# {$AELVORY_LANDING_DOMAIN::80} resolves to:
+#   - the env var when set (e.g. "aelvory.com") — Caddy negotiates a
+#     Let's Encrypt cert automatically and serves on 80 + 443
+#   - ":80" otherwise — for local docker-compose use, plain HTTP
+#
+# In the production deployment Cloudflare sits in front and terminates
+# TLS at the edge, so the origin can stay HTTP-only. Set the env var
+# only if you want Caddy to manage its own cert (running without
+# Cloudflare in front, or with Cloudflare's "Full (strict)" mode and
+# a real backend cert).
+
+{$AELVORY_LANDING_DOMAIN::80} {
+    # JSON access log to stdout. Without it, "no requests in the log"
+    # tells you nothing about whether traffic is actually arriving —
+    # painful behind a Cloudflare Tunnel where you can't see the
+    # request leg from your local terminal. docker logs picks it up
+    # alongside Caddy's own structured startup output.
+    log {
+        output stdout
+    }
+
+    encode gzip zstd
+
+    # Static assets: long-cache the hashed-or-stable bundle (logo,
+    # favicon, css). The HTML itself stays uncached so site updates
+    # land immediately without users having to hard-reload.
+    @assets path /assets/* /favicon.png /style.css
+    header @assets Cache-Control "public, max-age=604800, immutable"
+    header /index.html Cache-Control "no-cache"
+    header / Cache-Control "no-cache"
+
+    # Standard security headers. Strict-Transport-Security only
+    # applies meaningfully when Caddy itself is on HTTPS; harmless
+    # otherwise. Cloudflare adds its own equivalent if it's terminating.
+    header Referrer-Policy "strict-origin-when-cross-origin"
+    header X-Content-Type-Options "nosniff"
+    header X-Frame-Options "DENY"
+    header Permissions-Policy "interest-cohort=()"
+
+    root * /srv/site
+    file_server
+    # try_files lets bare paths like /features serve index.html — the
+    # site is a single page with anchor links today, but this means a
+    # future /docs or /pricing route works without server changes if
+    # we add client-side routing later.
+    try_files {path} /index.html
+}

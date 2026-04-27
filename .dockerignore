@@ -1,0 +1,48 @@
+**/bin
+**/obj
+
+# node_modules — must be exhaustive on Windows. BuildKit's context
+# walker tries to stat workspace symlinks (pnpm uses NTFS junctions
+# for `@aelvory/*` and many vendor pkgs) before applying ignores; if
+# one fails, the build aborts with "file cannot be accessed by the
+# system". Listing the well-known locations explicitly stops the
+# walker from descending in the first place.
+node_modules
+**/node_modules
+**/node_modules/**
+apps/desktop/node_modules
+apps/desktop/node_modules/**
+apps/web/node_modules
+apps/web/node_modules/**
+apps/server.tests/bin
+apps/server.tests/obj
+packages/core/node_modules
+packages/core/node_modules/**
+packages/i18n/node_modules
+packages/i18n/node_modules/**
+packages/crypto/node_modules
+packages/crypto/node_modules/**
+packages/scripting/node_modules
+packages/scripting/node_modules/**
+
+**/dist
+**/target
+**/.vs
+**/.vscode
+**/.idea
+**/.git
+**/.env
+**/.env.*
+!**/.env.example
+**/openapi.json
+packages/core/src/generated
+
+# Tauri Rust target dirs (large)
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/Cargo.lock
+
+# Build outputs
+apps/web/dist
+apps/desktop/dist
+apps/server/bin
+apps/server/obj

@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Aelvory.Server.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- xUnit + the SDK pieces VSTest / `dotnet test` need to discover and run. -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+
+    <!-- WebApplicationFactory: spins up the real ASP.NET pipeline in-process
+         and hands us an HttpClient that bypasses the network. -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+
+    <!-- Testcontainers: real Postgres in a throwaway container per test
+         run. We deliberately avoid the EF InMemory provider — it lies
+         about FK / unique / concurrency semantics, which is exactly the
+         layer our multi-tenant invariants depend on. -->
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.0.0" />
+
+    <!-- EF Core, used by tests that seed/peek directly past the API
+         (faster than going through controllers for fixture setup). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference the server project so we can use Program (for WAF) and
+         AelvoryDbContext / entity types directly in fixtures. -->
+    <ProjectReference Include="..\server\Aelvory.Server.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,29 @@
+{
+  "name": "aelvory",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm --filter @aelvory/desktop dev",
+    "dev:web": "pnpm --filter @aelvory/web dev",
+    "tauri": "pnpm --filter @aelvory/desktop tauri",
+    "build": "pnpm -r build",
+    "infra:up": "docker compose up -d postgres redis minio",
+    "infra:down": "docker compose down",
+    "docker:up": "docker compose up",
+    "docker:up:detached": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:rebuild": "docker compose up -d --build --force-recreate server web",
+    "docker:shell": "docker compose run --rm tools bash",
+    "docker:gen-client": "docker compose run --rm tools dotnet nswag run nswag.json",
+    "docker:migration:apply": "docker compose run --rm tools dotnet ef database update --project apps/server/Aelvory.Server.csproj",
+    "tools:restore": "dotnet tool restore",
+    "gen-client": "cross-env DOTNET_ROLL_FORWARD=Major dotnet nswag run nswag.json",
+    "migration:add": "dotnet ef migrations add --project apps/server",
+    "migration:apply": "dotnet ef database update --project apps/server"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "name": "aelvory-vscode",
+  "displayName": "Aelvory",
+  "description": "Aelvory API testing inside VSCode",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "aelvory",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aelvory/aelvory"
+  },
+  "homepage": "https://github.com/aelvory",
+  "bugs": {
+    "url": "https://github.com/aelvory/aelvory/issues"
+  },
+  "categories": [
+    "Other",
+    "Testing"
+  ],
+  "keywords": [
+    "api",
+    "rest",
+    "websocket",
+    "openapi",
+    "swagger",
+    "postman",
+    "insomnia",
+    "har"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "activationEvents": [
+    "onCommand:aelvory.open",
+    "onCommand:aelvory.syncNow",
+    "onCommand:aelvory.openFile",
+    "onCommand:aelvory.newCurl",
+    "onCommand:aelvory.import",
+    "onView:aelvory.actions",
+    "onView:aelvory.status"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aelvory.open",
+        "title": "Aelvory: Open",
+        "category": "Aelvory"
+      },
+      {
+        "command": "aelvory.syncNow",
+        "title": "Aelvory: Sync now",
+        "category": "Aelvory"
+      },
+      {
+        "command": "aelvory.openFile",
+        "title": "Open in Aelvory",
+        "category": "Aelvory"
+      },
+      {
+        "command": "aelvory.newCurl",
+        "title": "Aelvory: New curl tab",
+        "category": "Aelvory"
+      },
+      {
+        "command": "aelvory.import",
+        "title": "Aelvory: Import file…",
+        "category": "Aelvory"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "aelvory.openFile",
+          "when": "resourceExtname == .har || resourceExtname == .yaml || resourceExtname == .yml || resourceExtname == .json",
+          "group": "navigation@99"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "aelvory.openFile",
+          "when": "resourceExtname == .har || resourceExtname == .yaml || resourceExtname == .yml || resourceExtname == .json",
+          "group": "navigation@99"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Aelvory",
+      "properties": {
+        "aelvory.storageScope": {
+          "type": "string",
+          "enum": ["global", "workspace"],
+          "default": "global",
+          "enumDescriptions": [
+            "One database shared across every VSCode window. Same collections everywhere — best when API testing follows the user, not the project.",
+            "Per-workspace database (under the workspace's storageUri). Different collections per project. Falls back to global when no workspace is open."
+          ],
+          "description": "Where to keep Aelvory's local SQLite database. Changing this requires a window reload (you'll be prompted)."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aelvory-sidebar",
+          "title": "Aelvory",
+          "icon": "media/sidebar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "aelvory-sidebar": [
+        {
+          "id": "aelvory.actions",
+          "name": "Aelvory",
+          "type": "tree"
+        },
+        {
+          "id": "aelvory.status",
+          "name": "Status",
+          "type": "tree"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "aelvory.actions",
+        "contents": "[$(window) Open Aelvory](command:aelvory.open)\n\n[$(refresh) Sync now](command:aelvory.syncNow)\n\n[$(terminal) New curl tab](command:aelvory.newCurl)\n\n[$(cloud-upload) Import file…](command:aelvory.import)"
+      }
+    ]
+  },
+  "scripts": {
+    "build:webview": "pnpm --filter @aelvory/desktop build:vscode",
+    "build:extension": "node esbuild.mjs",
+    "typecheck": "tsc -p . --noEmit",
+    "build": "pnpm run build:webview && pnpm run build:extension",
+    "watch": "node esbuild.mjs --watch",
+    "package": "pnpm run build && vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.13",
+    "esbuild": "^0.24.0",
+    "typescript": "~5.6.3"
+  }
+}
