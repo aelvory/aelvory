@@ -133,15 +133,13 @@ jobs:
       # builds the bundles into the matrix target dir and stops.
       # The `publish` job below picks them up via the workflow
       # artifact uploaded next.
+      # When you wire Apple code signing, add an `env:` block here
+      # with APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD /
+      # APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_PASSWORD /
+      # APPLE_TEAM_ID populated from secrets. (An empty `env:` block
+      # with only commented-out lines is rejected by Actions's YAML
+      # loader as "Unexpected value ''".)
       - uses: tauri-apps/tauri-action@v0
-        env:
-          # Apple signing — uncomment + add secrets to enable.
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: apps/desktop
           args: --target ${{ matrix.target }}
