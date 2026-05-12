@@ -60,7 +60,23 @@ public class SyncController(
             .Where(m => m.OrganizationId == orgId && m.UserId == userId)
             .Select(m => new { m.Role, m.Restricted })
             .FirstOrDefaultAsync(ct);
-        if (memberInfo is null) return Forbid();
+        if (memberInfo is null)
+        {
+            // Plain Forbid() returns 403 with no body, which the
+            // desktop client surfaces as a bare "sync HTTP 403" toast
+            // with no actionable detail. Return a structured body
+            // naming the org we couldn't write to so the user knows
+            // what they're missing membership for.
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "not_a_member",
+                message = $"User is not a member of organization {orgId}. " +
+                          "Either you were removed from this org, or the local DB " +
+                          "references an org that doesn't exist on this server.",
+                organizationId = orgId,
+                userId,
+            });
+        }
 
         var isRestrictedEditor =
             memberInfo.Role == MemberRole.Editor && memberInfo.Restricted;
@@ -77,7 +93,17 @@ public class SyncController(
                 if (entry.ProjectId is not null &&
                     !grantedProjectIds.Contains(entry.ProjectId.Value))
                 {
-                    return Forbid();
+                    return StatusCode(StatusCodes.Status403Forbidden, new
+                    {
+                        error = "project_not_granted",
+                        message = $"You are a restricted Editor in this organization and have no " +
+                                  $"ProjectMember grant for project {entry.ProjectId.Value}. Ask an " +
+                                  "Admin to grant access in the admin SPA → Members → Edit.",
+                        organizationId = orgId,
+                        projectId = entry.ProjectId.Value,
+                        entityType = entry.EntityType,
+                        entityId = entry.EntityId,
+                    });
                 }
             }
         }
@@ -173,7 +199,18 @@ public class SyncController(
             .Where(m => m.OrganizationId == orgId && m.UserId == userId)
             .Select(m => new { m.Role, m.Restricted })
             .FirstOrDefaultAsync(ct);
-        if (memberInfo is null) return Forbid();
+        if (memberInfo is null)
+        {
+            // Same structured response as the push endpoint — see
+            // comment there for why bare Forbid() is unhelpful.
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "not_a_member",
+                message = $"User is not a member of organization {orgId}.",
+                organizationId = orgId,
+                userId,
+            });
+        }
 
         var isRestrictedEditor =
             memberInfo.Role == MemberRole.Editor && memberInfo.Restricted;

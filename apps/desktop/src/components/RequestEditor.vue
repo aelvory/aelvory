@@ -18,10 +18,17 @@ import ScriptsPanel from './ScriptsPanel.vue';
 import { useTabsStore, type RequestTab } from '@/stores/tabs';
 import { useCollectionsStore } from '@/stores/collections';
 import { useEnvironmentsStore } from '@/stores/environments';
+import { useSettingsStore } from '@/stores/settings';
 import { execute } from '@/services/runner';
-import { effectiveAuth } from '@/services/variables';
+import {
+  effectiveAuth,
+  mergeVariables,
+  resolveRequest,
+} from '@/services/variables';
 import { provideVariableNames } from '@/composables/variables';
 import { runPreScript, runPostScript } from '@/services/scriptRunner';
+import { toCurl } from '@aelvory/core';
+import { toast } from '@/services/toast';
 
 const props = defineProps<{ tab: RequestTab }>();
 
@@ -163,6 +170,44 @@ async function save() {
   }
 }
 
+const settings = useSettingsStore();
+
+/**
+ * Render the current request as a curl command and copy it to the
+ * clipboard. We resolve variables and fold in inherited collection
+ * auth so the output is paste-and-run — matches what `execute()`
+ * would actually send on the wire. The `--insecure` flag is added
+ * whenever the user has the "ignore SSL certs" setting on so the
+ * curl command behaves like the in-app runner.
+ */
+async function copyAsCurl() {
+  try {
+    const ancestorVarsTopDown = ancestorChain.value.map(
+      (c) => collections.variablesByCollection[c.id] ?? [],
+    );
+    const vars = mergeVariables(environments.activeVariables, ancestorVarsTopDown);
+    const withInheritedAuth = {
+      ...props.tab.request,
+      auth: effectiveAuth(props.tab.request, ancestorChain.value),
+    };
+    const resolved = resolveRequest(withInheritedAuth, vars);
+    const command = toCurl(resolved, { insecure: settings.ignoreCerts });
+    await navigator.clipboard.writeText(command);
+    toast({
+      severity: 'success',
+      summary: 'Copied as cURL',
+      detail: 'Command copied to clipboard.',
+      life: 2500,
+    });
+  } catch (err) {
+    toast({
+      severity: 'error',
+      summary: 'Copy failed',
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function applyEnvUpdates(updates: { key: string; value: string }[]) {
   if (!updates.length) return;
   const activeEnvId = environments.activeEnvId;
@@ -252,6 +297,15 @@ function onKeyDown(e: KeyboardEvent) {
         :collection-variables="collections.variablesByCollection"
       />
       <Button
+        icon="pi pi-copy"
+        size="small"
+        severity="secondary"
+        text
+        title="Copy as cURL"
+        aria-label="Copy as cURL"
+        @click="copyAsCurl"
+      />
+      <Button
         label="Save"
         icon="pi pi-save"
         size="small"
@@ -271,7 +325,20 @@ function onKeyDown(e: KeyboardEvent) {
       />
     </div>
 
-    <Splitter layout="vertical" class="editor-body" :gutter-size="4">
+    <!-- stateKey + stateStorage persist the splitter sizes to
+         localStorage. All request tabs share the same key (one
+         "user preference" rather than per-tab state), so dragging
+         the response/request divider in one tab affects every
+         request tab the next time it opens. `:size`/`:min-size`
+         are the defaults used before the stored value loads OR
+         after a localStorage wipe. -->
+    <Splitter
+      layout="vertical"
+      class="editor-body"
+      :gutter-size="4"
+      state-key="aelvory.split.requestEditor"
+      state-storage="local"
+    >
       <SplitterPanel :size="55" :min-size="20">
         <Tabs v-model:value="activePanel" class="ed-tabs">
           <TabList>

@@ -12,19 +12,118 @@ import TabList from 'primevue/tablist';
 import Tab from 'primevue/tab';
 import TabPanels from 'primevue/tabpanels';
 import TabPanel from 'primevue/tabpanel';
+import Select from 'primevue/select';
 import { parseOpenApi, type ImportResult, type ImportedFolder } from '@/services/importOpenApi';
 import { parsePostman } from '@/services/importPostman';
 import { parseInsomnia } from '@/services/importInsomnia';
 import { parseHar } from '@/services/importHar';
 import { fetchSpec } from '@/services/fetchSpec';
-import { importIntoProject, type ImportStats } from '@/services/importer';
+import {
+  importIntoProject,
+  flattenRequestPaths,
+  type ImportStats,
+  type RequestPath,
+} from '@/services/importer';
 import { useWorkspaceStore } from '@/stores/workspace';
+import { useCollectionsStore } from '@/stores/collections';
 import { useUiStore } from '@/stores/ui';
 
 const visible = defineModel<boolean>({ required: true });
 
 const workspace = useWorkspaceStore();
+const collections = useCollectionsStore();
 const ui = useUiStore();
+
+// --- Target / partial-import state ---
+
+/**
+ * Existing collection to import INTO. `null` means top-level
+ * (historical default). Reset on every fresh open of the dialog.
+ */
+const intoCollectionId = ref<string | null>(null);
+
+/**
+ * Flat list of request paths from the parsed result + the user's
+ * selection. `null` selection means "all" (no filtering). Switching
+ * to a per-row selection populates the set from the full list, then
+ * the user unchecks the unwanted ones.
+ */
+const selectedRequestPaths = ref<Set<string> | null>(null);
+
+/**
+ * Whether the partial-import checklist is visible. Toggled by a
+ * "Select endpoints…" button so the dialog stays compact for the
+ * common case (import everything).
+ */
+const partialSelectionOpen = ref(false);
+
+const allRequestPaths = computed<RequestPath[]>(() =>
+  parsed.value ? flattenRequestPaths(parsed.value) : [],
+);
+
+/**
+ * Build the "import into" select options: a "Top level" entry plus
+ * every collection in the current project, with indentation that
+ * reflects the folder hierarchy so the user sees where things will land.
+ */
+const collectionOptions = computed(() => {
+  const opts: { label: string; value: string | null }[] = [
+    { label: '(Top level — new collection in project)', value: null },
+  ];
+  const cols = collections.collections;
+  // Sort: depth-first by parent chain so children appear under their
+  // parents and the list reads top-to-bottom like the actual tree.
+  const byParent = new Map<string | null, typeof cols>();
+  for (const c of cols) {
+    const k = c.parentId ?? null;
+    if (!byParent.has(k)) byParent.set(k, []);
+    byParent.get(k)!.push(c);
+  }
+  for (const arr of byParent.values()) {
+    arr.sort((a, b) => a.sortIndex - b.sortIndex || a.name.localeCompare(b.name));
+  }
+  function walk(parentId: string | null, depth: number) {
+    for (const c of byParent.get(parentId) ?? []) {
+      opts.push({
+        label: `${'  '.repeat(depth)}${c.name}`,
+        value: c.id,
+      });
+      walk(c.id, depth + 1);
+    }
+  }
+  walk(null, 0);
+  return opts;
+});
+
+function toggleRequestPath(path: string) {
+  if (!selectedRequestPaths.value) {
+    // First click on a checkbox initialises the set from "all".
+    selectedRequestPaths.value = new Set(
+      allRequestPaths.value.map((r) => r.path),
+    );
+  }
+  const set = new Set(selectedRequestPaths.value);
+  if (set.has(path)) set.delete(path);
+  else set.add(path);
+  selectedRequestPaths.value = set;
+}
+
+function selectAllRequests() {
+  selectedRequestPaths.value = new Set(allRequestPaths.value.map((r) => r.path));
+}
+function selectNoneRequests() {
+  selectedRequestPaths.value = new Set();
+}
+function clearRequestSelection() {
+  // null = "import everything", same as the dialog's initial state.
+  selectedRequestPaths.value = null;
+  partialSelectionOpen.value = false;
+}
+
+const selectedCount = computed(() => {
+  if (selectedRequestPaths.value === null) return allRequestPaths.value.length;
+  return selectedRequestPaths.value.size;
+});
 
 type ImportSource = 'openapi' | 'postman' | 'insomnia' | 'har';
 
@@ -162,6 +261,9 @@ async function doImport() {
   try {
     const res = await importIntoProject(parsed.value, {
       projectId: workspace.currentProjectId,
+      intoCollectionId: intoCollectionId.value,
+      includeRequestPaths:
+        selectedRequestPaths.value ?? undefined,
       createEnvName:
         createEnv.value && parsed.value.environmentSuggestions.length
           ? envName.value.trim() || 'imported'
@@ -187,6 +289,9 @@ function close() {
   parseError.value = null;
   importError.value = null;
   fetchError.value = null;
+  intoCollectionId.value = null;
+  selectedRequestPaths.value = null;
+  partialSelectionOpen.value = false;
   stats.value = null;
   progress.value = { done: 0, total: 0 };
 }
@@ -334,6 +439,71 @@ function close() {
         <span v-if="preview.env">{{ preview.env }} variable{{ preview.env !== 1 ? 's' : '' }}</span>
       </div>
 
+      <!-- Where to put the imported tree. Default is a new top-level
+           collection in the current project; user can pick any
+           existing collection to nest the imported tree under. -->
+      <div v-if="parsed" class="import-target">
+        <label class="import-target-label">Import into</label>
+        <Select
+          v-model="intoCollectionId"
+          :options="collectionOptions"
+          option-label="label"
+          option-value="value"
+          class="import-target-select"
+        />
+      </div>
+
+      <!-- Partial-import checklist. Hidden by default — "Select
+           endpoints…" reveals it. Filter applies to the leaf
+           requests; folders that end up empty after the filter
+           are skipped automatically by the importer. -->
+      <div v-if="parsed && allRequestPaths.length > 1" class="partial-toggle">
+        <button
+          v-if="!partialSelectionOpen"
+          class="link-btn"
+          type="button"
+          @click="partialSelectionOpen = true"
+        >
+          <i class="pi pi-filter" />
+          Select specific endpoints to import…
+          ({{ allRequestPaths.length }} available)
+        </button>
+        <button
+          v-else
+          class="link-btn"
+          type="button"
+          @click="clearRequestSelection"
+        >
+          <i class="pi pi-times" />
+          Import all endpoints (clear selection)
+        </button>
+      </div>
+
+      <div v-if="partialSelectionOpen" class="endpoint-list-wrap">
+        <div class="endpoint-list-head">
+          <span>{{ selectedCount }} / {{ allRequestPaths.length }} selected</span>
+          <span class="spacer" />
+          <button class="link-btn" type="button" @click="selectAllRequests">All</button>
+          <button class="link-btn" type="button" @click="selectNoneRequests">None</button>
+        </div>
+        <ul class="endpoint-list">
+          <li
+            v-for="r in allRequestPaths"
+            :key="r.path"
+            class="endpoint-row"
+            :style="{ paddingLeft: 0.5 + r.depth * 1 + 'rem' }"
+          >
+            <Checkbox
+              :model-value="selectedRequestPaths === null || selectedRequestPaths.has(r.path)"
+              binary
+              @update:model-value="toggleRequestPath(r.path)"
+            />
+            <span :class="['endpoint-method', `method-${r.method.toLowerCase()}`]">{{ r.method }}</span>
+            <span class="endpoint-name">{{ r.name }}</span>
+          </li>
+        </ul>
+      </div>
+
       <div v-if="parsed && parsed.environmentSuggestions.length" class="env-opt">
         <Checkbox v-model="createEnv" binary input-id="create-env-chk" />
         <label for="create-env-chk" class="env-label">
@@ -462,6 +632,91 @@ function close() {
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0;
+}
+.import-target {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+.import-target-label {
+  font-size: 0.85rem;
+  color: var(--p-text-muted-color, #6b7280);
+  min-width: 80px;
+}
+.import-target-select {
+  flex: 1;
+  min-width: 0;
+}
+.partial-toggle {
+  padding: 0.35rem 0;
+}
+.link-btn {
+  background: transparent;
+  border: none;
+  color: var(--p-primary-color, #3b82f6);
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 0.2rem 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+.endpoint-list-wrap {
+  border: 1px solid var(--p-content-border-color, #e5e7eb);
+  border-radius: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--p-content-background, transparent);
+}
+.endpoint-list-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color, #6b7280);
+  position: sticky;
+  top: 0;
+  background: var(--p-content-hover-background, #f9fafb);
+}
+.endpoint-list-head .spacer { flex: 1; }
+.endpoint-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+}
+.endpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.82rem;
+}
+.endpoint-row:hover {
+  background: var(--p-content-hover-background, #f3f4f6);
+}
+.endpoint-method {
+  font-weight: 700;
+  font-size: 0.7rem;
+  min-width: 3rem;
+  text-transform: uppercase;
+}
+.endpoint-method.method-get { color: #16a34a; }
+.endpoint-method.method-post { color: #ca8a04; }
+.endpoint-method.method-put { color: #2563eb; }
+.endpoint-method.method-patch { color: #9333ea; }
+.endpoint-method.method-delete { color: #dc2626; }
+.endpoint-method.method-head, .endpoint-method.method-options { color: #6b7280; }
+.endpoint-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .env-label {
   font-size: 0.85rem;

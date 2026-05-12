@@ -22,6 +22,7 @@
  */
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Tabs from 'primevue/tabs';
 import TabList from 'primevue/tablist';
@@ -332,6 +333,40 @@ function deleteMessage(id: string) {
   savedMessages.value = savedMessages.value.filter((m) => m.id !== id);
 }
 
+/**
+ * Clone an existing saved message under a new id. Name gets a
+ * "(copy)" suffix, numbered if duplicates already exist so the
+ * list stays distinguishable.
+ */
+function duplicateMessage(m: SavedWsMessage) {
+  const existingNames = new Set(savedMessages.value.map((x) => x.name));
+  let candidate = `${m.name} (copy)`;
+  let n = 2;
+  while (existingNames.has(candidate)) {
+    candidate = `${m.name} (copy ${n++})`;
+  }
+  savedMessages.value = [
+    ...savedMessages.value,
+    { id: genMsgId(), name: candidate, body: m.body },
+  ];
+}
+
+/**
+ * `editorOpen` drives the modal visibility. Computed from the two
+ * pieces of edit state we already had — set either to enter the
+ * dialog, both get reset by `cancelEdit` to close it.
+ */
+const editorOpen = computed({
+  get: () => creatingNew.value || editingId.value !== null,
+  set: (v: boolean) => {
+    if (!v) cancelEdit();
+  },
+});
+
+const editorTitle = computed(() =>
+  creatingNew.value ? 'New message' : 'Edit message',
+);
+
 function sendSaved(m: SavedWsMessage) {
   // Fires the saved message on the live connection — same pipeline
   // as the composer's Send button, minus the JSON re-stringify (the
@@ -587,105 +622,56 @@ async function copyMessage(m: WsMessage, ev: Event) {
                 connection. Saved with the request — sync carries
                 them between machines.
               </p>
+              <!-- Saved-messages list. Inline edit was cramped in the
+                   sidebar tab; editing now opens a Dialog (see further
+                   down in the template) with a code-editor-sized
+                   body field. The list stays simple: name, preview,
+                   four action buttons (send, edit, duplicate, delete). -->
               <ul v-if="savedMessages.length" class="msg-list">
                 <li
                   v-for="m in savedMessages"
                   :key="m.id"
                   class="msg-item"
-                  :class="{ editing: editingId === m.id }"
                 >
-                  <template v-if="editingId === m.id">
-                    <InputText
-                      v-model="editingDraft.name"
-                      placeholder="Name"
-                      class="full"
+                  <div class="msg-row-head">
+                    <span class="msg-name">{{ m.name }}</span>
+                    <span class="spacer" />
+                    <Button
+                      icon="pi pi-send"
+                      size="small"
+                      :title="isConnected ? 'Send' : 'Connect first'"
+                      :disabled="!isConnected"
+                      @click="sendSaved(m)"
                     />
-                    <Textarea
-                      v-model="editingDraft.body"
-                      rows="3"
-                      placeholder="Message body"
-                      class="full"
-                      spellcheck="false"
+                    <Button
+                      icon="pi pi-pencil"
+                      text
+                      size="small"
+                      severity="secondary"
+                      title="Edit"
+                      @click="startEdit(m)"
                     />
-                    <div class="msg-edit-actions">
-                      <Button
-                        label="Save"
-                        size="small"
-                        :disabled="!editingDraft.name.trim()"
-                        @click="commitEdit"
-                      />
-                      <Button
-                        label="Cancel"
-                        size="small"
-                        text
-                        severity="secondary"
-                        @click="cancelEdit"
-                      />
-                    </div>
-                  </template>
-                  <template v-else>
-                    <div class="msg-row-head">
-                      <span class="msg-name">{{ m.name }}</span>
-                      <span class="spacer" />
-                      <Button
-                        icon="pi pi-send"
-                        size="small"
-                        :title="isConnected ? 'Send' : 'Connect first'"
-                        :disabled="!isConnected"
-                        @click="sendSaved(m)"
-                      />
-                      <Button
-                        icon="pi pi-pencil"
-                        text
-                        size="small"
-                        severity="secondary"
-                        title="Edit"
-                        @click="startEdit(m)"
-                      />
-                      <Button
-                        icon="pi pi-trash"
-                        text
-                        size="small"
-                        severity="danger"
-                        title="Delete"
-                        @click="deleteMessage(m.id)"
-                      />
-                    </div>
-                    <pre class="msg-preview">{{ m.body }}</pre>
-                  </template>
+                    <Button
+                      icon="pi pi-clone"
+                      text
+                      size="small"
+                      severity="secondary"
+                      title="Duplicate"
+                      @click="duplicateMessage(m)"
+                    />
+                    <Button
+                      icon="pi pi-trash"
+                      text
+                      size="small"
+                      severity="danger"
+                      title="Delete"
+                      @click="deleteMessage(m.id)"
+                    />
+                  </div>
+                  <pre class="msg-preview">{{ m.body }}</pre>
                 </li>
               </ul>
-              <div v-if="creatingNew" class="msg-new">
-                <InputText
-                  v-model="editingDraft.name"
-                  placeholder="Name (e.g. Ping)"
-                  class="full"
-                />
-                <Textarea
-                  v-model="editingDraft.body"
-                  rows="3"
-                  placeholder="Body — text or JSON"
-                  class="full"
-                  spellcheck="false"
-                />
-                <div class="msg-edit-actions">
-                  <Button
-                    label="Add"
-                    size="small"
-                    :disabled="!editingDraft.name.trim()"
-                    @click="commitEdit"
-                  />
-                  <Button
-                    label="Cancel"
-                    size="small"
-                    text
-                    severity="secondary"
-                    @click="cancelEdit"
-                  />
-                </div>
-              </div>
               <Button
-                v-else
                 icon="pi pi-plus"
                 label="New message"
                 text
@@ -829,6 +815,56 @@ async function copyMessage(m: WsMessage, ev: Event) {
         </div>
       </div>
     </div>
+
+    <!-- Saved-message editor. Opens for both "new" (creatingNew=true)
+         and "edit" (editingId set) flows. Bigger body field than the
+         old inline UI fit in the sidebar — a 14-row textarea here vs.
+         3 rows inline. Ctrl+Enter saves; Esc closes via Dialog's own
+         escape behaviour. -->
+    <Dialog
+      v-model:visible="editorOpen"
+      modal
+      :header="editorTitle"
+      :style="{ width: '640px' }"
+      :draggable="false"
+    >
+      <div class="msg-editor-body">
+        <label class="msg-editor-label">Name</label>
+        <InputText
+          v-model="editingDraft.name"
+          placeholder="e.g. Ping, Subscribe to channel"
+          class="full"
+          autofocus
+        />
+        <label class="msg-editor-label">Body</label>
+        <Textarea
+          v-model="editingDraft.body"
+          rows="14"
+          placeholder='{"type":"ping"}'
+          class="full msg-editor-textarea"
+          spellcheck="false"
+          @keydown.ctrl.enter.prevent="commitEdit"
+          @keydown.meta.enter.prevent="commitEdit"
+        />
+        <p class="msg-editor-hint">
+          Saved as-is. JSON / text — whatever the server expects.
+          <code>Ctrl+Enter</code> to save.
+        </p>
+      </div>
+      <template #footer>
+        <Button
+          label="Cancel"
+          severity="secondary"
+          text
+          @click="cancelEdit"
+        />
+        <Button
+          :label="creatingNew ? 'Add' : 'Save'"
+          :disabled="!editingDraft.name.trim()"
+          @click="commitEdit"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -1238,6 +1274,36 @@ async function copyMessage(m: WsMessage, ev: Event) {
 .msg-new-btn {
   justify-content: flex-start;
   margin-top: 0.4rem;
+}
+.msg-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.25rem 0;
+}
+.msg-editor-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--p-text-muted-color, #6b7280);
+  margin-top: 0.2rem;
+}
+.msg-editor-textarea {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 0.85rem;
+  /* Resizable vertically so the user can stretch even further if a
+     14-row default still isn't enough. */
+  resize: vertical;
+  min-height: 220px;
+}
+.msg-editor-hint {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--p-text-muted-color, #9ca3af);
+}
+.msg-editor-hint code {
+  background: var(--p-content-hover-background, #f3f4f6);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
 }
 .format-select {
   font-size: 0.78rem;

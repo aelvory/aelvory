@@ -254,6 +254,20 @@ function onDeleteRequest(r: ApiRequest) {
   confirmDeleteRequest(r);
 }
 
+async function onDuplicateRequest(r: ApiRequest) {
+  // No confirmation — duplicate is non-destructive, the user can
+  // delete the copy if it wasn't what they wanted.
+  await collections.duplicateRequest(r);
+}
+
+async function onDuplicateCollection(id: string) {
+  if (!workspace.currentProjectId) return;
+  // Duplicating a tree can take a few seconds for big folders
+  // (one server call per request + per variable). The button hides
+  // the in-flight state but the toast on completion will be enough.
+  await collections.duplicateCollection(workspace.currentProjectId, id);
+}
+
 async function onRename(
   id: string,
   kind: 'request' | 'collection',
@@ -496,6 +510,8 @@ function expandAll() {
         @add-folder="addFolder"
         @delete-request="onDeleteRequest"
         @delete-collection="onDeleteCollection"
+        @duplicate-request="onDuplicateRequest"
+        @duplicate-collection="onDuplicateCollection"
         @toggle-collapse="toggleCollapse"
         @rename="onRename"
         @move="onMove"

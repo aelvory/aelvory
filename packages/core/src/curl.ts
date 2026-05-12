@@ -9,6 +9,150 @@ export interface ParsedCurl {
   warnings: string[];
 }
 
+/** Minimum input shape for `toCurl` — matches both `ApiRequest` and `ExecuteRequestPayload`. */
+export interface ToCurlInput {
+  method?: string;
+  url: string;
+  headers?: Header[];
+  body?: RequestBody | null;
+  auth?: AuthConfig | null;
+}
+
+export interface ToCurlOptions {
+  /**
+   * Break the command across lines with backslash continuations for
+   * readability. Default: true. Set false for a single-line command
+   * that's easier to paste into a chat or a single-line shell.
+   */
+  multiline?: boolean;
+  /**
+   * Emit `--insecure` (alias `-k`). Set true when the app is running
+   * with TLS verification disabled so the curl command behaves the
+   * same way on the user's machine. Default: false.
+   */
+  insecure?: boolean;
+}
+
+/**
+ * Render a request as a `curl` command string suitable for pasting
+ * into a terminal. The inverse of `parseCurl`; round-tripping through
+ * both should preserve method, url, headers, raw body, and the common
+ * auth shapes (basic, bearer, apikey-in-header).
+ *
+ * Quoting strategy: every argument is wrapped in POSIX single quotes
+ * with the `'"'"'` trick for embedded apostrophes, so the output is
+ * safe to paste into bash/zsh/sh regardless of what's in the URL,
+ * header values, or body.
+ *
+ * Emission rules:
+ *  - `-X` is omitted for GET (curl's default).
+ *  - Disabled headers (`enabled: false`) and empty-key headers are
+ *    skipped.
+ *  - `auth.basic` → `-u user:pass`. `auth.bearer` → `-H
+ *    'Authorization: Bearer …'` unless an Authorization header is
+ *    already in `headers` (avoids double-up). `auth.apikey` with
+ *    placement `header` (the default) is added as a header; query
+ *    placement is left to the caller since we don't rewrite the URL
+ *    here. Other auth types (oauth2, aws-sigv4, digest) need
+ *    per-call computation curl can't do statically, so they're
+ *    skipped silently — the resulting command will be unauthenticated.
+ *  - Body: `type: 'raw'` (and the catch-all for graphql/form/
+ *    multipart, which we currently store as serialized raw strings)
+ *    is emitted via `--data-raw`. A `Content-Type` header is added
+ *    only if the caller didn't already include one. `type: 'binary'`
+ *    is dropped with a comment since we can't inline binary content.
+ *  - `type: 'none'` and absent bodies → no -d/--data flag.
+ */
+export function toCurl(req: ToCurlInput, opts: ToCurlOptions = {}): string {
+  const multiline = opts.multiline ?? true;
+  const sep = multiline ? ' \\\n  ' : ' ';
+  const parts: string[] = ['curl'];
+
+  // Method. Skip `-X` for GET since that's curl's default and a bare
+  // `curl URL` reads more naturally.
+  const method = (req.method || 'GET').toUpperCase();
+  if (method !== 'GET') parts.push(`-X ${method}`);
+
+  // URL goes immediately after the method for the same reason it
+  // tends to appear there in hand-written curl: it's the subject of
+  // the command and easy to spot.
+  parts.push(shellQuote(req.url));
+
+  // Headers — keep author-supplied order so the output mirrors the
+  // request as the user has it in the editor.
+  const headers = req.headers ?? [];
+  const hasHeader = (name: string) =>
+    headers.some(
+      (h) => h.enabled !== false && h.key.toLowerCase() === name.toLowerCase(),
+    );
+  for (const h of headers) {
+    if (h.enabled === false) continue;
+    if (!h.key) continue;
+    parts.push(`-H ${shellQuote(`${h.key}: ${h.value ?? ''}`)}`);
+  }
+
+  // Auth.
+  if (req.auth && req.auth.type !== 'none') {
+    const c = (req.auth.config ?? {}) as Record<string, unknown>;
+    switch (req.auth.type) {
+      case 'basic': {
+        const u = String(c.username ?? '');
+        const p = String(c.password ?? '');
+        parts.push(`-u ${shellQuote(`${u}:${p}`)}`);
+        break;
+      }
+      case 'bearer': {
+        if (!hasHeader('Authorization')) {
+          const t = String(c.token ?? '');
+          parts.push(`-H ${shellQuote(`Authorization: Bearer ${t}`)}`);
+        }
+        break;
+      }
+      case 'apikey': {
+        // Default placement is header; query-string placement would
+        // require rewriting `req.url` which is the caller's concern.
+        const placement = String(c.in ?? c.placement ?? 'header').toLowerCase();
+        const key = String(c.key ?? c.name ?? '');
+        const value = String(c.value ?? '');
+        if (placement === 'header' && key && !hasHeader(key)) {
+          parts.push(`-H ${shellQuote(`${key}: ${value}`)}`);
+        }
+        break;
+      }
+      // oauth2 / aws-sigv4 / digest: no static curl equivalent.
+    }
+  }
+
+  // Body.
+  if (req.body && req.body.type !== 'none') {
+    if (req.body.type === 'binary') {
+      // Best-effort: we can't inline arbitrary bytes safely. Drop a
+      // comment so the user knows to point at a file with @path.
+      parts.push("# binary body omitted — replace with --data-binary @/path/to/file");
+    } else {
+      const raw = req.body.raw ?? '';
+      const ct = req.body.contentType;
+      if (ct && !hasHeader('Content-Type')) {
+        parts.push(`-H ${shellQuote(`Content-Type: ${ct}`)}`);
+      }
+      parts.push(`--data-raw ${shellQuote(raw)}`);
+    }
+  }
+
+  if (opts.insecure) parts.push('--insecure');
+
+  return parts.join(sep);
+}
+
+/**
+ * Wrap a string in POSIX single quotes, escaping any embedded
+ * apostrophes via the standard close-quote / quoted-quote / re-open
+ * trick: `it's` → `'it'"'"'s'`. Safe to paste into bash/zsh/sh.
+ */
+function shellQuote(s: string): string {
+  return `'${String(s).replace(/'/g, `'"'"'`)}'`;
+}
+
 /**
  * Parse a curl command string into our request shape.
  * Throws an Error with a descriptive message on unrecoverable parse failures.

@@ -307,6 +307,128 @@ export const useCollectionsStore = defineStore('collections', () => {
     };
   }
 
+  /**
+   * Duplicate a request (HTTP or WebSocket). Copies every editable
+   * field — method, URL, headers, body, auth, kind — into a brand-new
+   * request under the same collection. Name gets a "(copy)" suffix,
+   * numbered if duplicates already exist so the UNIQUE-name
+   * constraint never trips.
+   *
+   * Scripts (pre/post) aren't duplicated here — they're a separate
+   * table and copying them would require an extra round-trip per
+   * script. Today the user can re-add scripts if they want; can be
+   * added later if real demand surfaces.
+   */
+  async function duplicateRequest(request: ApiRequest): Promise<ApiRequest> {
+    const siblings = requestsByCollection.value[request.collectionId] ?? [];
+    const existingNames = new Set(siblings.map((r) => r.name));
+    let candidate = `${request.name} (copy)`;
+    let n = 2;
+    while (existingNames.has(candidate)) {
+      candidate = `${request.name} (copy ${n++})`;
+    }
+    return createRequest(request.collectionId, {
+      name: candidate,
+      kind: request.kind,
+      method: request.method,
+      url: request.url,
+      // Deep-clone via JSON to avoid the new request sharing nested
+      // objects with the old one (headers array, body, auth.config).
+      headers: JSON.parse(JSON.stringify(request.headers)),
+      body: request.body ? JSON.parse(JSON.stringify(request.body)) : null,
+      auth: request.auth ? JSON.parse(JSON.stringify(request.auth)) : null,
+    });
+  }
+
+  /**
+   * Recursively duplicate a collection and everything under it:
+   * the collection itself, its requests, its variables, its
+   * sub-folders (and their requests / variables / sub-folders, ad
+   * infinitum). Top-level copy gets a "(copy)" suffix; nested
+   * children keep their original names.
+   *
+   * Each sub-step talks to the server individually — could be
+   * batched server-side later for bigger trees, but for typical
+   * collection sizes (~50 requests) this is fast enough.
+   */
+  async function duplicateCollection(
+    projectId: string,
+    sourceId: string,
+    options: { parentId?: string | null; renameRoot?: boolean } = {},
+  ): Promise<Collection> {
+    const source = collections.value.find((c) => c.id === sourceId);
+    if (!source) throw new Error('source_collection_not_found');
+
+    const targetParentId =
+      options.parentId !== undefined ? options.parentId : source.parentId ?? null;
+
+    // Name only the top-level copy. Recursive sub-calls keep names
+    // verbatim — "Auth (copy) / Login" is right, "Auth (copy) /
+    // Login (copy)" would be confusing.
+    const renameRoot = options.renameRoot !== false;
+    let name = source.name;
+    if (renameRoot) {
+      const siblings = collections.value.filter(
+        (c) => c.parentId === targetParentId,
+      );
+      const existingNames = new Set(siblings.map((c) => c.name));
+      let candidate = `${source.name} (copy)`;
+      let n = 2;
+      while (existingNames.has(candidate)) {
+        candidate = `${source.name} (copy ${n++})`;
+      }
+      name = candidate;
+    }
+
+    const newCollection = await createCollection(projectId, name, targetParentId);
+
+    // Copy auth (if any) onto the new collection.
+    if (source.auth) {
+      await updateCollection(projectId, {
+        ...newCollection,
+        auth: JSON.parse(JSON.stringify(source.auth)),
+      });
+    }
+
+    // Copy collection-scoped variables.
+    const sourceVars = variablesByCollection.value[sourceId] ?? [];
+    for (const v of sourceVars) {
+      if (!v.key) continue;
+      await upsertCollectionVariable(
+        newCollection.id,
+        v.key,
+        v.value ?? null,
+        v.isSecret,
+      );
+    }
+
+    // Clone all immediate requests.
+    const requests = requestsByCollection.value[sourceId] ?? [];
+    for (const req of requests) {
+      await createRequest(newCollection.id, {
+        name: req.name,
+        kind: req.kind,
+        method: req.method,
+        url: req.url,
+        headers: JSON.parse(JSON.stringify(req.headers)),
+        body: req.body ? JSON.parse(JSON.stringify(req.body)) : null,
+        auth: req.auth ? JSON.parse(JSON.stringify(req.auth)) : null,
+      });
+    }
+
+    // Recurse into nested folders. Pass `renameRoot: false` so
+    // sub-folders keep their original names.
+    const children = collections.value.filter((c) => c.parentId === sourceId);
+    for (const child of children) {
+      await duplicateCollection(projectId, child.id, {
+        parentId: newCollection.id,
+        renameRoot: false,
+      });
+    }
+
+    return newCollection;
+  }
+
   async function loadScripts(
     collectionId: string,
     requestId: string,
@@ -350,6 +472,8 @@ export const useCollectionsStore = defineStore('collections', () => {
     findById,
     ancestorChain,
     createCollection,
+    duplicateCollection,
+    duplicateRequest,
     updateCollection,
     moveCollection,
     moveRequest,

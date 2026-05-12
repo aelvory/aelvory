@@ -71,17 +71,55 @@ function buildTheme(dark: boolean) {
         color: 'var(--p-text-muted-color)',
         border: 'none',
       },
+      // Active-line highlight — CodeMirror's drawSelection layer
+      // sits at z-index -2, so a SOLID background on .cm-activeLine
+      // (which renders on top at z-index 0) covers any selection
+      // rectangle drawn on the same line. We use a low-alpha
+      // overlay instead so a selected region on the active line is
+      // still visible — the line-highlight tints, doesn't hide.
+      //
+      // Hardcoded rgba instead of var() because the PrimeVue
+      // content-hover-background tokens are opaque solid colors.
       '.cm-activeLine': {
-        backgroundColor: 'var(--p-content-hover-background)',
+        backgroundColor: dark
+          ? 'rgba(255, 255, 255, 0.04)'
+          : 'rgba(0, 0, 0, 0.04)',
       },
+      // The gutter cell on the active line is fine to keep opaque —
+      // no selection is ever drawn there, so the higher contrast is
+      // a useful "you are here" indicator with no downside.
       '.cm-activeLineGutter': {
         backgroundColor: 'var(--p-content-hover-background)',
         color: 'var(--p-text-color)',
       },
-      // Selection — !important needed because CodeMirror's own rule
-      // is more specific than what we'd produce otherwise.
-      '.cm-selectionBackground, .cm-content ::selection': {
-        backgroundColor: 'var(--p-highlight-background) !important',
+      // Text selection — third attempt at this. CodeMirror draws
+      // selection rectangles via `.cm-selectionBackground` divs
+      // inside `.cm-selectionLayer`. Two things bit us before:
+      //
+      //   1. Single-line selections were rendering via native
+      //      browser ::selection instead of the drawn layer, so my
+      //      `.cm-selectionBackground` rules only kicked in on
+      //      multi-line drags.
+      //   2. CodeMirror's baseTheme / Aura's emerald-tinted defaults
+      //      were winning the cascade against my selectors that
+      //      weren't strong enough.
+      //
+      // Fix: every selection-related selector AND `!important`
+      // everywhere. Hardcoded brighter colors (#1e6091 dark = a
+      // saturated blue with high contrast against any dark
+      // editor background, NOT the subtle #264f78 VSCode uses;
+      // that turned out too faint here). Same shade for focused
+      // and unfocused — the cursor presence is enough of a focus
+      // indicator without changing the highlight too.
+      '&.cm-editor .cm-selectionBackground, & .cm-selectionLayer > *, &.cm-editor.cm-focused .cm-selectionBackground': {
+        background: (dark ? '#1e6091' : '#9cc7f5') + ' !important',
+      },
+      // Native ::selection covers single-line drags that bypass
+      // the drawn layer plus any non-content nodes (placeholder
+      // text, line numbers if selectable, etc).
+      '.cm-content ::selection, .cm-line ::selection, & ::selection': {
+        background: (dark ? '#1e6091' : '#9cc7f5') + ' !important',
+        color: 'inherit !important',
       },
       // Autocomplete dropdown — without this, the popover stays
       // white-on-dark in dark mode.

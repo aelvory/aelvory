@@ -8,6 +8,11 @@ import { detectRuntime } from '@/runtime/environment';
 import type { DbDriver } from './driver';
 import { applyMigrations } from './migrations';
 
+// Cross-connection write contention is solved at the JS layer (see
+// `TauriDbDriver.transaction` — promise-chain mutex serializes every
+// top-level transaction), so we don't need URL-level PRAGMA tuning
+// here. sqlx in plugin-sql's pinned version rejects unknown query
+// params anyway.
 const DB_URL = 'sqlite:aelvory.db';
 
 let driverPromise: Promise<DbDriver> | null = null;

@@ -36,7 +36,15 @@ function onMethod(v: string) {
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+  // Enter in the URL field sends the request. The URL is a
+  // single-line input so there's no in-field newline semantic to
+  // preserve. Ctrl/Cmd+Enter still works for symmetry with the
+  // global keybinding most users have muscle memory for.
+  //
+  // Shift+Enter is intentionally NOT sending — leaves room for a
+  // future "send and stay" variant or an as-yet-undefined modifier
+  // gesture.
+  if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     emit('send');
   }

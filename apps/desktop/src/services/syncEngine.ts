@@ -1,4 +1,5 @@
 import { tableAll, tableDelete, tableGet, tablePut } from '@/localdb/generic';
+import { getDb } from '@/localdb/db';
 import { TABLES_WITH_DELETED_AT, type TableName } from '@/localdb/schema';
 import {
   bytesFromJson,
@@ -385,13 +386,33 @@ export async function runSync(opts: RunSyncOptions): Promise<SyncResult> {
       batches.push(entries.slice(i, i + 500));
     }
     for (const batch of batches) {
-      const r = await pushEntries(opts.token, batch, opts.connectionId);
-      pushed = {
-        accepted: pushed.accepted + r.accepted,
-        rejected: pushed.rejected + r.rejected,
-        serverCursor: Math.max(pushed.serverCursor, r.serverCursor),
-        conflicts: [...pushed.conflicts, ...r.conflicts],
-      };
+      try {
+        const r = await pushEntries(opts.token, batch, opts.connectionId);
+        pushed = {
+          accepted: pushed.accepted + r.accepted,
+          rejected: pushed.rejected + r.rejected,
+          serverCursor: Math.max(pushed.serverCursor, r.serverCursor),
+          conflicts: [...pushed.conflicts, ...r.conflicts],
+        };
+      } catch (err) {
+        // Surface what we tried to push when the server rejects.
+        // Particularly useful for 403s — pairs with the structured
+        // error body the server now returns so the user can see both
+        // "what was the request" and "why was it rejected" side by
+        // side in DevTools.
+        const projectIds = new Set(
+          batch.map((e) => e.projectId).filter((p): p is string => !!p),
+        );
+        const entityTypes = new Set(batch.map((e) => e.entityType));
+        console.error('[sync] push batch rejected:', {
+          orgId: opts.organizationId,
+          batchSize: batch.length,
+          distinctProjectIds: [...projectIds],
+          distinctEntityTypes: [...entityTypes],
+          firstEntry: batch[0],
+        });
+        throw err;
+      }
     }
   }
 
@@ -443,7 +464,33 @@ export async function runPull(opts: RunPullOptions): Promise<PullResult> {
  * over. Trivial today, but keeping it as a single helper centralizes the
  * "where do I look for orgs" question.
  */
-export async function knownOrgIds(): Promise<string[]> {
+/**
+ * Orgs the local DB knows about AND the current signed-in user has
+ * a membership row for. Without the membership filter, a stale local
+ * org (from a previous account session, a wiped server, or a removed
+ * membership) would be in this list and the per-org push loop would
+ * 403 against the server with "not_a_member" forever.
+ *
+ * @param userId the current signed-in user's id (server-canonical
+ *               after `linkLocalUserToServerId`). When omitted, falls
+ *               back to the legacy behaviour (every non-deleted local
+ *               org) — kept only for `_resetForTests` paths.
+ */
+export async function knownOrgIds(userId?: string): Promise<string[]> {
+  const db = await getDb();
+  if (userId) {
+    // SQL filter rather than walking JS to keep the local member-id
+    // shape consistent with the table layout (org_id, user_id).
+    const rows = await db.select<{ id: string }>(
+      `SELECT DISTINCT o.id
+         FROM organizations o
+         INNER JOIN members m ON m.organization_id = o.id
+        WHERE o.deleted_at IS NULL
+          AND m.user_id = ?`,
+      [userId],
+    );
+    return rows.map((r) => r.id);
+  }
   const orgs = await tableAll<{ id: string; deletedAt: string | null }>('organizations');
   return orgs.filter((o) => !o.deletedAt).map((o) => o.id);
 }

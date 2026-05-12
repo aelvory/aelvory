@@ -208,7 +208,26 @@ watch(
 
 <template>
   <div class="curl-console" @keydown="onKeyDown">
-    <Splitter class="split" :gutter-size="4">
+    <!--
+      `:key` forces the Splitter to fully remount whenever the user
+      toggles history open/closed. PrimeVue's Splitter caches its
+      panel layout internally and doesn't reconcile cleanly when a
+      `SplitterPanel` is v-if'd out and back in — the panel comes
+      back in the Vue tree but never re-attaches inside the Splitter,
+      so clicking "History" again would do nothing visible. Remounting
+      sidesteps the bug.
+
+      `state-key` only applies to the 2-panel layout (history open).
+      When history is closed there's only one panel, sizes are moot,
+      and we don't write a key — keeps the persisted entry clean.
+    -->
+    <Splitter
+      :key="historyOpen ? 'open' : 'closed'"
+      class="split"
+      :gutter-size="4"
+      :state-key="historyOpen ? 'aelvory.split.curlConsole' : undefined"
+      state-storage="local"
+    >
       <SplitterPanel :size="historyOpen ? 75 : 100" :min-size="40">
         <div class="main">
           <div class="toolbar">
@@ -247,12 +266,18 @@ watch(
             />
           </div>
 
+          <!--
+            No `auto-resize` here: it sets inline `overflow: hidden` and
+            grows the element to fit content, which means a long curl
+            command silently clips at our `max-height` cap instead of
+            scrolling. With a plain bounded textarea the user gets a
+            scrollbar inside the box once the command exceeds the height.
+          -->
           <Textarea
             :model-value="props.tab.command"
             placeholder="Paste a curl command. Ctrl+Enter to send."
             class="command-input"
             spellcheck="false"
-            auto-resize
             rows="6"
             @update:model-value="onCommandInput"
           />
@@ -379,6 +404,12 @@ watch(
   font-size: 0.82rem;
   min-height: 120px;
   max-height: 260px;
+  /* `!important` because PrimeVue's Textarea sets an inline `overflow`
+     style that beats a plain class selector. Without this the user
+     can't scroll a long pasted command — the bottom of the value
+     just gets clipped at max-height. */
+  overflow-y: auto !important;
+  resize: vertical;
 }
 .parse-msg {
   font-size: 0.82rem;

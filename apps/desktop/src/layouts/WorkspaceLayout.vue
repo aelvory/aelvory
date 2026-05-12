@@ -230,7 +230,16 @@ async function renameProject() {
       cope well with that). Swapping the wrapper is cleaner and keeps
       the splitter sizes meaningful when the user expands again.
     -->
-    <Splitter v-if="!sidebarCollapsed" class="body" :gutter-size="4">
+    <!-- Persist the sidebar/content split. `state-key` is unique
+         to this splitter; PrimeVue handles the read/write to
+         localStorage automatically. -->
+    <Splitter
+      v-if="!sidebarCollapsed"
+      class="body"
+      :gutter-size="4"
+      state-key="aelvory.split.workspace"
+      state-storage="local"
+    >
       <SplitterPanel :size="22" :min-size="14">
         <CollectionTree />
       </SplitterPanel>

@@ -42,6 +42,8 @@ const emit = defineEmits<{
   'add-folder': [parentCollectionId: string];
   'delete-request': [request: ApiRequest];
   'delete-collection': [collectionId: string];
+  'duplicate-request': [request: ApiRequest];
+  'duplicate-collection': [collectionId: string];
   'toggle-collapse': [collectionId: string];
   rename: [id: string, kind: 'request' | 'collection', newName: string];
   move: [payload: MovePayload];
@@ -154,6 +156,16 @@ function onClick() {
   if (props.node.kind === 'request' && props.node.request) {
     emit('open-request', props.node.request);
   } else if (props.node.kind === 'collection' && props.node.collection) {
+    // Single-click on a folder does BOTH: toggle expand/collapse
+    // AND open the collection-edit tab (where the user changes
+    // name / auth / variables). Without the edit-tab side there's
+    // no way to get to collection settings; without the toggle side
+    // it doesn't behave like a tree. Both on one click matches the
+    // user's mental model.
+    //
+    // The chevron button still works (with @click.stop) for users
+    // who only want to toggle without opening the edit tab.
+    emit('toggle-collapse', props.node.id);
     emit('open-collection', props.node.collection);
   }
 }
@@ -169,7 +181,7 @@ function onClick() {
       'drop-after': dropPosition === 'after',
     }"
     :style="{ paddingLeft: padding() }"
-    :draggable="!renaming"
+    :draggable="!renaming ? 'true' : 'false'"
     @click="onClick"
     @dragstart="onDragStart"
     @dragover="onDragOver"
@@ -209,6 +221,14 @@ function onClick() {
     <span v-else class="name" @dblclick.stop="startRename">{{ node.name }}</span>
     <button
       v-if="node.request && !renaming"
+      class="action-btn"
+      title="Duplicate"
+      @click.stop="emit('duplicate-request', node.request)"
+    >
+      <i class="pi pi-clone" />
+    </button>
+    <button
+      v-if="node.request && !renaming"
       class="action-btn danger-btn"
       title="Delete request"
       @click.stop="emit('delete-request', node.request)"
@@ -226,7 +246,7 @@ function onClick() {
         'drop-into': dropPosition === 'into',
       }"
       :style="{ paddingLeft: padding() }"
-      :draggable="!renaming"
+      :draggable="!renaming ? 'true' : 'false'"
       @click="onClick"
       @dragstart="onDragStart"
       @dragover="onDragOver"
@@ -277,6 +297,13 @@ function onClick() {
           <i class="pi pi-bolt" />
         </button>
         <button
+          class="action-btn"
+          title="Duplicate folder (incl. all contents)"
+          @click.stop="emit('duplicate-collection', node.id)"
+        >
+          <i class="pi pi-clone" />
+        </button>
+        <button
           class="action-btn danger-btn"
           title="Delete folder"
           @click.stop="emit('delete-collection', node.id)"
@@ -300,6 +327,8 @@ function onClick() {
         @add-folder="(id) => emit('add-folder', id)"
         @delete-request="(r) => emit('delete-request', r)"
         @delete-collection="(id) => emit('delete-collection', id)"
+        @duplicate-request="(r) => emit('duplicate-request', r)"
+        @duplicate-collection="(id) => emit('duplicate-collection', id)"
         @toggle-collapse="(id) => emit('toggle-collapse', id)"
         @rename="(id, kind, name) => emit('rename', id, kind, name)"
         @move="(p) => emit('move', p)"

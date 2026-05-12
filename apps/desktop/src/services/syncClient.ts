@@ -183,13 +183,48 @@ async function fetchJson<T>(
   }
 
   if (!res.ok) {
+    // Try the server's structured JSON error first (typical ASP.NET
+    // shape: { type, title, status, detail, errors } or our custom
+    // { error, message }). Fall back to text() so a server that
+    // returned plain "Forbidden" or a stack trace still surfaces
+    // something useful instead of nothing.
     let body: unknown = null;
+    let bodyText: string | null = null;
     try {
-      body = await res.json();
+      bodyText = await res.text();
+      if (bodyText) {
+        try {
+          body = JSON.parse(bodyText);
+        } catch {
+          /* not JSON — use bodyText as-is */
+        }
+      }
     } catch {
       /* ignore */
     }
-    throw new SyncHttpError(res.status, body, `sync HTTP ${res.status}`);
+
+    // Build a useful one-line message from whatever the server gave
+    // us. The toast will show this directly, so it should explain
+    // WHY the request failed, not just the status code.
+    const method = opts.method ?? 'GET';
+    const detail = extractErrorDetail(body, bodyText);
+    const message = detail
+      ? `sync HTTP ${res.status} on ${method} ${path}: ${detail}`
+      : `sync HTTP ${res.status} on ${method} ${path}`;
+
+    // Dump everything to DevTools so the user can right-click →
+    // Inspect to see the full server response (often more than
+    // fits in a toast).
+    console.error('[sync] request failed:', {
+      method,
+      url: `${baseUrl()}${path}`,
+      status: res.status,
+      statusText: res.statusText,
+      body,
+      bodyText,
+    });
+
+    throw new SyncHttpError(res.status, body, message);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -203,6 +238,42 @@ export class SyncHttpError extends Error {
   ) {
     super(message);
   }
+}
+
+/**
+ * Find the most useful single-line description in whatever shape
+ * the server returned. Tried in priority order:
+ *
+ *   1. ASP.NET ProblemDetails — `{ title, detail, errors }`
+ *      (most server endpoints use this for 4xx)
+ *   2. Our custom shape — `{ error: string }` or `{ message: string }`
+ *   3. Plain string body — `"Forbidden"` etc.
+ *   4. Fall through to null, caller substitutes a generic message.
+ *
+ * The validation-errors map (`errors: { fieldName: [msgs] }`) is
+ * flattened to "field: msg" pairs so the user sees which input
+ * was rejected, not just "validation failed".
+ */
+function extractErrorDetail(body: unknown, text: string | null): string | null {
+  if (body && typeof body === 'object') {
+    const o = body as Record<string, unknown>;
+    // ASP.NET validation errors map
+    if (o.errors && typeof o.errors === 'object') {
+      const pairs: string[] = [];
+      for (const [field, msgs] of Object.entries(o.errors as Record<string, unknown>)) {
+        const arr = Array.isArray(msgs) ? msgs : [msgs];
+        for (const m of arr) pairs.push(`${field}: ${m}`);
+      }
+      if (pairs.length) return pairs.join('; ');
+    }
+    if (typeof o.detail === 'string' && o.detail.trim()) return o.detail;
+    if (typeof o.title === 'string' && o.title.trim()) return o.title;
+    if (typeof o.error === 'string' && o.error.trim()) return o.error;
+    if (typeof o.message === 'string' && o.message.trim()) return o.message;
+  }
+  if (typeof body === 'string' && body.trim()) return body;
+  if (text && text.trim() && text.length < 200) return text.trim();
+  return null;
 }
 
 export async function login(

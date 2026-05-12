@@ -484,7 +484,16 @@ export const useSyncStore = defineStore('sync', () => {
         }
       }
 
-      const orgs = await knownOrgIds();
+      // Filter to orgs the current user has membership for. Without
+      // this, a stale local org (from a previous account session, a
+      // wiped server, or a removed membership row) would still get
+      // a push attempt — which the server rejects with 403
+      // "not_a_member". Falls back to the unfiltered list only if
+      // we couldn't decode the JWT to get a user id (defensive — that
+      // shouldn't happen post-auth).
+      const orgs = serverUserId
+        ? await knownOrgIds(serverUserId)
+        : await knownOrgIds();
 
       // Aggregate accumulator. Each per-org SyncResult contributes its
       // numbers; conflicts pile up into the same list. lastResult is a
