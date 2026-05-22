@@ -10,6 +10,7 @@ import Splitter from 'primevue/splitter';
 import SplitterPanel from 'primevue/splitterpanel';
 import UrlBar from './UrlBar.vue';
 import KeyValueList from './KeyValueList.vue';
+import QueryParamsPanel from './QueryParamsPanel.vue';
 import BodyPanel from './BodyPanel.vue';
 import AuthPanel from './AuthPanel.vue';
 import ResponseViewer from './ResponseViewer.vue';
@@ -56,6 +57,17 @@ const headers = computed({
   get: () => props.tab.request.headers,
   set: (v) => {
     props.tab.request.headers = v;
+    tabs.markDirty(props.tab.id);
+  },
+});
+const queryParams = computed({
+  // Older rows loaded from disk before M003 may briefly land in the
+  // tab with `queryParams === undefined`. Coalesce to `[]` so the
+  // editor always has an array to bind to without the caller having
+  // to initialize it.
+  get: () => props.tab.request.queryParams ?? [],
+  set: (v) => {
+    props.tab.request.queryParams = v;
     tabs.markDirty(props.tab.id);
   },
 });
@@ -342,6 +354,15 @@ function onKeyDown(e: KeyboardEvent) {
       <SplitterPanel :size="55" :min-size="20">
         <Tabs v-model:value="activePanel" class="ed-tabs">
           <TabList>
+            <Tab value="params">
+              Params
+              <span
+                v-if="queryParams.filter((p) => p.enabled && p.key).length"
+                class="count-badge"
+              >
+                {{ queryParams.filter((p) => p.enabled && p.key).length }}
+              </span>
+            </Tab>
             <Tab value="headers">Headers</Tab>
             <Tab value="body">Body</Tab>
             <Tab value="auth">
@@ -358,6 +379,9 @@ function onKeyDown(e: KeyboardEvent) {
             </Tab>
           </TabList>
           <TabPanels>
+            <TabPanel value="params">
+              <QueryParamsPanel v-model="queryParams" />
+            </TabPanel>
             <TabPanel value="headers">
               <KeyValueList v-model="headers" />
             </TabPanel>
@@ -477,6 +501,20 @@ function onKeyDown(e: KeyboardEvent) {
   border-radius: 50%;
   background: var(--p-primary-500, #3b82f6);
   margin-left: 0.35rem;
+  vertical-align: middle;
+}
+.count-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: var(--p-primary-500, #3b82f6);
+  color: white;
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  min-width: 1.1rem;
+  text-align: center;
+  margin-left: 0.35rem;
+  line-height: 1.3;
   vertical-align: middle;
 }
 .inherit-note {

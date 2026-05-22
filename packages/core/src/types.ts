@@ -115,6 +115,29 @@ export interface Header {
   enabled: boolean;
 }
 
+/**
+ * A single URL query-string parameter. Shares the toggleable
+ * `enabled` semantic with Header, plus an optional `presets` list:
+ * when set, the editor renders the value cell as a dropdown of those
+ * choices instead of a free-text input. The point of presets is
+ * letting a user define the allowed values once (e.g. an enum-like
+ * server parameter) and just pick from them on subsequent runs.
+ */
+export interface QueryParam {
+  key: string;
+  value: string;
+  enabled: boolean;
+  /**
+   * Allowed values for this param. When non-empty, the value cell in
+   * the editor renders as a Select; the user can still type a free
+   * value via the "custom" option. Edit/add/remove happens inline in
+   * the editor row's "manage presets" popover.
+   */
+  presets?: string[];
+  /** Optional plain-text description shown as a placeholder/tooltip. */
+  description?: string;
+}
+
 export interface RequestBody {
   type: 'none' | 'form' | 'multipart' | 'raw' | 'binary' | 'graphql';
   raw?: string;
@@ -133,6 +156,13 @@ export interface ApiRequest extends EntityBase {
   method: HttpMethod | string;
   url: string;
   headers: Header[];
+  /**
+   * Toggleable query-string params merged into the URL at send time
+   * (see `applyQueryParams` in the runner). Disabled rows are
+   * skipped. Optional for backwards compatibility — pre-feature
+   * rows that come back from disk without this field default to [].
+   */
+  queryParams?: QueryParam[];
   body: RequestBody | null;
   auth: AuthConfig | null;
   sortIndex: number;

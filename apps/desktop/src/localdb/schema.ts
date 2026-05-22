@@ -119,6 +119,13 @@ export interface LRequest {
   method: string;
   url: string;
   headers: unknown[];
+  /**
+   * URL query-string parameters; serialized to/from the `query_params`
+   * column (M003). Each row carries `{ key, value, enabled, presets? }`
+   * — `presets` is an optional preset value list managed inline in the
+   * editor. Defaults to [] for pre-M003 rows.
+   */
+  queryParams: unknown[];
   body: unknown | null;
   auth: unknown | null;
   sortIndex: number;

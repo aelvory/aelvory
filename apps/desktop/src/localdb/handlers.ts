@@ -230,9 +230,9 @@ async function insertRequest(r: LRequest) {
   const db = await getDb();
   await db.execute(
     `INSERT INTO requests
-       (id, collection_id, name, kind, method, url, headers, body, auth,
-        sort_index, version, created_at, updated_at, deleted_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, collection_id, name, kind, method, url, headers, query_params,
+        body, auth, sort_index, version, created_at, updated_at, deleted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     requestParams(r),
   );
 }
@@ -242,8 +242,8 @@ async function updateRequest(r: LRequest) {
   await db.execute(
     `UPDATE requests
        SET collection_id = ?, name = ?, method = ?, url = ?, headers = ?,
-           body = ?, auth = ?, sort_index = ?, version = ?, updated_at = ?,
-           deleted_at = ?
+           query_params = ?, body = ?, auth = ?, sort_index = ?, version = ?,
+           updated_at = ?, deleted_at = ?
      WHERE id = ?`,
     [
       r.collectionId,
@@ -251,6 +251,7 @@ async function updateRequest(r: LRequest) {
       r.method,
       r.url,
       JSON.stringify(r.headers ?? []),
+      JSON.stringify(r.queryParams ?? []),
       r.body == null ? null : JSON.stringify(r.body),
       r.auth == null ? null : JSON.stringify(r.auth),
       r.sortIndex,
@@ -351,6 +352,7 @@ function toRequestDto(r: LRequest) {
     method: r.method,
     url: r.url,
     headers: r.headers ?? [],
+    queryParams: r.queryParams ?? [],
     body: r.body,
     auth: r.auth,
     sortIndex: r.sortIndex,
@@ -842,6 +844,7 @@ route(/^\/api\/collections\/([^/]+)\/requests$/, {
       method: String(ctx.body?.method ?? 'GET'),
       url: String(ctx.body?.url ?? 'https://httpbin.org/get'),
       headers: ctx.body?.headers ?? [],
+      queryParams: ctx.body?.queryParams ?? [],
       body: ctx.body?.body ?? null,
       auth: ctx.body?.auth ?? null,
       sortIndex,
@@ -868,6 +871,12 @@ route(/^\/api\/collections\/([^/]+)\/requests\/([^/]+)$/, {
     r.method = String(ctx.body?.method ?? r.method);
     r.url = String(ctx.body?.url ?? r.url);
     r.headers = ctx.body?.headers ?? [];
+    // queryParams is optional — when the caller doesn't include it
+    // (e.g. an older client) keep the existing value rather than
+    // wiping it.
+    if ('queryParams' in (ctx.body ?? {})) {
+      r.queryParams = ctx.body?.queryParams ?? [];
+    }
     r.body = ctx.body?.body ?? null;
     r.auth = ctx.body?.auth ?? null;
     r.version++;

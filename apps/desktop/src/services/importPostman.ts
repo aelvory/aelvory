@@ -1,4 +1,4 @@
-import type { AuthConfig, Header, RequestBody } from '@aelvory/core';
+import type { AuthConfig, Header, QueryParam, RequestBody } from '@aelvory/core';
 import type { ImportResult, ImportedFolder, ImportedRequest } from './importOpenApi';
 
 export function parsePostman(input: string): ImportResult {
@@ -66,10 +66,26 @@ function convertRequest(item: any): ImportedRequest {
     typeof req.method === 'string' ? req.method.toUpperCase() : 'GET';
 
   let url = '';
+  // Postman exports a structured `url.query` array. When present, we
+  // lift those into our toggleable queryParams (preserving disabled
+  // state via `q.disabled`) and strip the query string from the URL
+  // so the editor doesn't show params in two places.
+  const queryParams: QueryParam[] = [];
   if (typeof req.url === 'string') {
     url = req.url;
   } else if (req.url && typeof req.url === 'object') {
-    url = req.url.raw ?? reconstructUrl(req.url);
+    if (Array.isArray(req.url.query)) {
+      for (const q of req.url.query) {
+        if (!q || typeof q.key !== 'string' || !q.key) continue;
+        queryParams.push({
+          key: q.key,
+          value: q.value ?? '',
+          enabled: !q.disabled,
+          ...(q.description ? { description: String(q.description) } : {}),
+        });
+      }
+    }
+    url = reconstructUrl(req.url, /* omitQuery */ true);
   }
   // Postman {{var}} matches our syntax — no transform needed
 
@@ -94,18 +110,19 @@ function convertRequest(item: any): ImportedRequest {
     method,
     url,
     headers,
+    queryParams,
     body,
     auth,
   };
 }
 
-function reconstructUrl(url: any): string {
+function reconstructUrl(url: any, omitQuery = false): string {
   const protocol = url.protocol ? `${url.protocol}://` : '';
   const host = Array.isArray(url.host) ? url.host.join('.') : '';
   const port = url.port ? `:${url.port}` : '';
   const path = Array.isArray(url.path) ? '/' + url.path.join('/') : '';
   let qs = '';
-  if (Array.isArray(url.query) && url.query.length > 0) {
+  if (!omitQuery && Array.isArray(url.query) && url.query.length > 0) {
     const parts = url.query
       .filter((q: any) => q && !q.disabled && q.key)
       .map(

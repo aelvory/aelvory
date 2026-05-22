@@ -1,4 +1,31 @@
-import type { AuthConfig, Header, RequestBody } from './types';
+import type { AuthConfig, Header, QueryParam, RequestBody } from './types';
+
+/**
+ * Append `params` (enabled rows only) to `url`'s query string.
+ * Preserves any query string already in `url`, doesn't deduplicate
+ * keys — duplicate keys are a legitimate pattern (e.g. `tag=foo&tag=bar`).
+ *
+ * Returns the original URL unchanged when there are no enabled params,
+ * so calls are safe no-ops on requests without query-param config.
+ */
+export function applyQueryParams(url: string, params?: QueryParam[]): string {
+  const enabled = (params ?? []).filter((p) => p.enabled && p.key);
+  if (enabled.length === 0) return url;
+
+  const encoded = enabled
+    .map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value ?? '')}`)
+    .join('&');
+
+  // Place the new params after any existing query string. We do NOT
+  // try to parse-and-merge because the URL may already contain values
+  // that aren't strictly query-string (templated `{{vars}}`, custom
+  // encodings, fragments) — appending is safer than rewriting.
+  const hashIdx = url.indexOf('#');
+  const base = hashIdx === -1 ? url : url.slice(0, hashIdx);
+  const hash = hashIdx === -1 ? '' : url.slice(hashIdx);
+  const joiner = base.includes('?') ? '&' : '?';
+  return `${base}${joiner}${encoded}${hash}`;
+}
 
 export interface ParsedCurl {
   method: string;
@@ -14,6 +41,11 @@ export interface ToCurlInput {
   method?: string;
   url: string;
   headers?: Header[];
+  /**
+   * Enabled rows are merged into the URL's query string before
+   * rendering. Disabled rows and rows with no key are skipped.
+   */
+  queryParams?: QueryParam[];
   body?: RequestBody | null;
   auth?: AuthConfig | null;
 }
@@ -75,8 +107,9 @@ export function toCurl(req: ToCurlInput, opts: ToCurlOptions = {}): string {
 
   // URL goes immediately after the method for the same reason it
   // tends to appear there in hand-written curl: it's the subject of
-  // the command and easy to spot.
-  parts.push(shellQuote(req.url));
+  // the command and easy to spot. Enabled query params are merged
+  // into the URL here so the resulting command is paste-and-run.
+  parts.push(shellQuote(applyQueryParams(req.url, req.queryParams)));
 
   // Headers — keep author-supplied order so the output mirrors the
   // request as the user has it in the editor.

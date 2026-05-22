@@ -6,6 +6,7 @@ import type {
   Header,
   Variable,
 } from '@aelvory/core';
+import { applyQueryParams } from '@aelvory/core';
 import { isTauriEnv, isVSCodeEnv } from '@/api/mode';
 import { useSettingsStore } from '@/stores/settings';
 import {
@@ -340,7 +341,12 @@ async function executeViaTauri(request: ApiRequest): Promise<ExecuteResponse> {
     init.danger = { acceptInvalidCerts: true, acceptInvalidHostnames: true };
   }
 
-  const res = await tFetch(request.url, init);
+  // Merge enabled query params into the URL. Done here (not earlier
+  // in resolveRequest) so the source-of-truth URL on the editor side
+  // stays pristine — variables get resolved into params, then params
+  // get serialized into the URL, exactly once at send time.
+  const finalUrl = applyQueryParams(request.url, request.queryParams);
+  const res = await tFetch(finalUrl, init);
   const duration = Math.round(performance.now() - start);
 
   const responseBody = await res.text();
@@ -354,7 +360,7 @@ async function executeViaTauri(request: ApiRequest): Promise<ExecuteResponse> {
     statusText: res.statusText ?? '',
     headers: resHeaders,
     requestHeaders: captured,
-    requestUrl: request.url,
+    requestUrl: finalUrl,
     requestMethod: method,
     body: responseBody,
     durationMs: duration,
@@ -383,7 +389,9 @@ async function executeViaFetch(
     init.body = body;
   }
 
-  const res = await fetchFn(request.url, init);
+  // Merge enabled query params (see executeViaTauri for rationale).
+  const finalUrl = applyQueryParams(request.url, request.queryParams);
+  const res = await fetchFn(finalUrl, init);
   const duration = Math.round(performance.now() - start);
 
   const responseBody = await res.text();
@@ -397,7 +405,7 @@ async function executeViaFetch(
     statusText: res.statusText ?? '',
     headers: resHeaders,
     requestHeaders: captured,
-    requestUrl: request.url,
+    requestUrl: finalUrl,
     requestMethod: method,
     body: responseBody,
     durationMs: duration,

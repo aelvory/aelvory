@@ -91,9 +91,9 @@ const INSERT_SQL: Record<TableName, string> = {
              created_at, updated_at, deleted_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   requests: `INSERT OR REPLACE INTO requests
-            (id, collection_id, name, kind, method, url, headers, body, auth,
-             sort_index, version, created_at, updated_at, deleted_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (id, collection_id, name, kind, method, url, headers, query_params,
+             body, auth, sort_index, version, created_at, updated_at, deleted_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   scripts: `INSERT OR REPLACE INTO scripts
             (id, request_id, phase, source, version, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)`,

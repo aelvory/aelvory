@@ -146,6 +146,12 @@ function convertRequest(r: InsomniaResource): ImportedRequest {
     method: (r.method ?? 'GET').toUpperCase(),
     url: r.url ?? '',
     headers,
+    // Insomnia keeps params in the URL string for v4 exports;
+    // detached `parameters` arrays only show up in v5+ rarely. Leave
+    // queryParams empty so the URL stays untouched and the user can
+    // promote params into the editor manually if they want toggleable
+    // rows.
+    queryParams: [],
     body: convertBody(r.body),
     auth: convertAuth(r.authentication),
   };

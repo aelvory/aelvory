@@ -6,6 +6,7 @@ import type {
   RequestKind,
   AuthConfig,
   Header,
+  QueryParam,
   RequestBody,
   Variable,
   Script,
@@ -20,6 +21,7 @@ export interface CreateRequestPayload {
   method?: string;
   url?: string;
   headers?: Header[];
+  queryParams?: QueryParam[];
   body?: RequestBody | null;
   auth?: AuthConfig | null;
 }
@@ -260,6 +262,7 @@ export const useCollectionsStore = defineStore('collections', () => {
           method: payload.method ?? 'GET',
           url: payload.url ?? 'https://httpbin.org/get',
           headers: payload.headers ?? [],
+          queryParams: payload.queryParams ?? [],
           body: payload.body ?? null,
           auth: payload.auth ?? null,
         },
@@ -284,6 +287,7 @@ export const useCollectionsStore = defineStore('collections', () => {
           method: request.method,
           url: request.url,
           headers: request.headers,
+          queryParams: request.queryParams ?? [],
           body: request.body,
           auth: request.auth,
         },
@@ -333,8 +337,10 @@ export const useCollectionsStore = defineStore('collections', () => {
       method: request.method,
       url: request.url,
       // Deep-clone via JSON to avoid the new request sharing nested
-      // objects with the old one (headers array, body, auth.config).
+      // objects with the old one (headers array, body, auth.config,
+      // queryParams + their presets list).
       headers: JSON.parse(JSON.stringify(request.headers)),
+      queryParams: JSON.parse(JSON.stringify(request.queryParams ?? [])),
       body: request.body ? JSON.parse(JSON.stringify(request.body)) : null,
       auth: request.auth ? JSON.parse(JSON.stringify(request.auth)) : null,
     });
@@ -411,6 +417,7 @@ export const useCollectionsStore = defineStore('collections', () => {
         method: req.method,
         url: req.url,
         headers: JSON.parse(JSON.stringify(req.headers)),
+        queryParams: JSON.parse(JSON.stringify(req.queryParams ?? [])),
         body: req.body ? JSON.parse(JSON.stringify(req.body)) : null,
         auth: req.auth ? JSON.parse(JSON.stringify(req.auth)) : null,
       });

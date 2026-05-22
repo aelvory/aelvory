@@ -3,6 +3,7 @@ import type {
   AuthConfig,
   Collection,
   Header,
+  QueryParam,
   RequestBody,
   Variable,
 } from '@aelvory/core';
@@ -27,6 +28,18 @@ function resolveHeaders(headers: Header[], ctx: VariableContext): Header[] {
   }));
 }
 
+function resolveQueryParams(
+  params: QueryParam[] | undefined,
+  ctx: VariableContext,
+): QueryParam[] {
+  if (!params) return [];
+  return params.map((p) => ({
+    ...p,
+    key: resolve(p.key, ctx),
+    value: resolve(p.value, ctx),
+  }));
+}
+
 function resolveBody(body: RequestBody | null, ctx: VariableContext): RequestBody | null {
   if (!body) return null;
   return { ...body, raw: body.raw ? resolve(body.raw, ctx) : body.raw };
@@ -46,6 +59,7 @@ export function resolveRequest(req: ApiRequest, ctx: VariableContext): ApiReques
     ...req,
     url: resolve(req.url, ctx),
     headers: resolveHeaders(req.headers, ctx),
+    queryParams: resolveQueryParams(req.queryParams, ctx),
     body: resolveBody(req.body, ctx),
     auth: resolveAuth(req.auth, ctx),
   };

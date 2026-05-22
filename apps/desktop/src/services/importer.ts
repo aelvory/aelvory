@@ -92,6 +92,7 @@ export async function importIntoProject(
         method: req.method,
         url: req.url,
         headers: req.headers,
+        queryParams: req.queryParams,
         body: req.body,
         auth: req.auth,
       });

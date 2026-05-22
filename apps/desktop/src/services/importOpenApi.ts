@@ -1,11 +1,18 @@
 import yaml from 'js-yaml';
-import type { AuthConfig, Header, RequestBody } from '@aelvory/core';
+import type { AuthConfig, Header, QueryParam, RequestBody } from '@aelvory/core';
 
 export interface ImportedRequest {
   name: string;
   method: string;
   url: string;
   headers: Header[];
+  /**
+   * Query params extracted from the spec's `parameters[in=query]`.
+   * When a parameter declares `enum: [...]` in its schema, those
+   * values are lifted into the param's `presets` so the editor lets
+   * the user pick from them instead of typing.
+   */
+  queryParams: QueryParam[];
   body: RequestBody | null;
   auth: AuthConfig | null;
 }
@@ -186,7 +193,7 @@ function buildRequest(args: BuildArgs): ImportedRequest {
   const { pathStr, method, op, pathItem, isOpenApi3, baseUrl, spec, securitySchemes } = args;
 
   const headers: Header[] = [];
-  const queryParts: string[] = [];
+  const queryParams: QueryParam[] = [];
 
   const allParams = [
     ...((pathItem.parameters as any[]) ?? []),
@@ -208,13 +215,33 @@ function buildRequest(args: BuildArgs): ImportedRequest {
         enabled: param.required === true,
       });
     } else if (param.in === 'query') {
-      queryParts.push(
-        `${encodeURIComponent(String(param.name))}=${encodeURIComponent(example)}`,
-      );
+      // Lift enum choices (`schema.enum` in OAS 3, top-level `enum`
+      // in OAS 2) into our presets array — the editor renders them
+      // as a dropdown. This is the killer feature for endpoints with
+      // enum-shaped admin params (e.g. `kind=tick_data_mismatch|…`).
+      const enumValues: unknown[] =
+        param.schema?.enum ?? param.enum ?? [];
+      const presets = Array.isArray(enumValues) && enumValues.length
+        ? enumValues.map((v) => String(v))
+        : undefined;
+      queryParams.push({
+        key: String(param.name),
+        value: example,
+        // Required params start enabled; optional ones start disabled
+        // so the user can toggle them on without having to first
+        // delete the example values.
+        enabled: param.required === true,
+        ...(presets ? { presets } : {}),
+        ...(param.description ? { description: String(param.description) } : {}),
+      });
     }
   }
 
-  const url = `${baseUrl}${pathStr}${queryParts.length ? '?' + queryParts.join('&') : ''}`;
+  // Keep the URL clean — query params live in the queryParams field
+  // now and get merged in at send time. Older URL-embedded params
+  // (from already-imported requests) still work; this only changes
+  // what NEW imports look like.
+  const url = `${baseUrl}${pathStr}`;
 
   let body: RequestBody | null = null;
   if (isOpenApi3 && op.requestBody?.content) {
@@ -280,6 +307,7 @@ function buildRequest(args: BuildArgs): ImportedRequest {
     method: method.toUpperCase(),
     url,
     headers,
+    queryParams,
     body,
     auth,
   };

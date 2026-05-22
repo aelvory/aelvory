@@ -151,6 +151,9 @@ export function requestFromRow(r: any): LRequest {
     method: r.method,
     url: r.url,
     headers: parseJson<unknown[]>(r.headers, []),
+    // M003: column may be missing on rows loaded before the migration
+    // ran (it shouldn't be, but `?? '[]'` is cheap insurance).
+    queryParams: parseJson<unknown[]>(r.query_params ?? '[]', []),
     body: parseJson(r.body, null),
     auth: parseJson(r.auth, null),
     sortIndex: r.sort_index,
@@ -269,6 +272,7 @@ export const requestParams = (r: LRequest) => [
   r.method,
   r.url,
   JSON.stringify(r.headers ?? []),
+  JSON.stringify(r.queryParams ?? []),
   toJsonOrNull(r.body),
   toJsonOrNull(r.auth),
   r.sortIndex,

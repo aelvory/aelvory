@@ -197,6 +197,10 @@ function convertRequest(req: HarRequest): ImportedRequest {
     method,
     url,
     headers,
+    // HAR doesn't separate query string from URL — they're already
+    // embedded. Leave queryParams empty; the user can promote them
+    // out of the URL into toggleable params manually if they want.
+    queryParams: [],
     body: convertBody(req.postData),
     auth: extractAuthFromHeaders(headers),
   };

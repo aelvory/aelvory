@@ -279,7 +279,33 @@ const M002_DROP_TEAMS_MULTI_TENANT: Migration = {
   },
 };
 
-const ALL_MIGRATIONS: Migration[] = [M001_INITIAL_SCHEMA, M002_DROP_TEAMS_MULTI_TENANT];
+/**
+ * Adds the optional `query_params` column to `requests`. Defaults to
+ * '[]' so existing rows behave the same as before (no query params).
+ *
+ * The new column carries a JSON-serialized array of
+ * `{ key, value, enabled, presets? }` objects — see
+ * `QueryParam` in @aelvory/core. Defaulted to '[]' so existing rows
+ * don't need to be touched and the field is always parseable.
+ */
+const M003_REQUEST_QUERY_PARAMS: Migration = {
+  version: 3,
+  description: 'Add requests.query_params (JSON) for toggleable URL params with presets.',
+  up: async (db) => {
+    // ALTER TABLE ADD COLUMN is the cheap path in SQLite — no table
+    // rebuild needed, the column is appended and existing rows see
+    // the DEFAULT value.
+    await db.execute(
+      "ALTER TABLE requests ADD COLUMN query_params TEXT NOT NULL DEFAULT '[]'",
+    );
+  },
+};
+
+const ALL_MIGRATIONS: Migration[] = [
+  M001_INITIAL_SCHEMA,
+  M002_DROP_TEAMS_MULTI_TENANT,
+  M003_REQUEST_QUERY_PARAMS,
+];
 
 /**
  * Apply any migrations whose version is newer than what's recorded in
