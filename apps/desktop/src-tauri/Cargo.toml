@@ -1,6 +1,6 @@
 [package]
 name = "aelvory"
-version = "0.0.6"
+version = "0.0.7"
 description = "Aelvory desktop shell"
 authors = ["you"]
 edition = "2021"
