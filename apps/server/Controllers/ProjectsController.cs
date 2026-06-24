@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Aelvory.Server.Data;
 using Aelvory.Server.Dtos;
 using Aelvory.Server.Entities;
@@ -62,6 +63,81 @@ public class ProjectsController(
         return projects;
     }
 
+    /// <summary>
+    /// Project list for the admin UI, sourced from <c>SyncEntries</c>
+    /// (entityType "projects") instead of the canonical <c>Projects</c>
+    /// table. Projects created on the desktop only ever reach the server
+    /// as sync entries — they're never materialized into <c>Projects</c> —
+    /// so the canonical-table read (<see cref="List"/>) misses them. This
+    /// endpoint reads the authoritative store so every project shows up.
+    ///
+    /// <para>This is deliberately separate from <see cref="List"/>: the
+    /// desktop's sign-in reconciliation consumes <see cref="List"/> and
+    /// upserts the result into local SQLite unconditionally. Feeding it
+    /// sync-derived rows (encrypted placeholders, undelete-resets) would
+    /// clobber real local data, so the desktop keeps the canonical read
+    /// and only the admin UI calls this one.</para>
+    /// </summary>
+    [HttpGet("all")]
+    public async Task<ActionResult<List<AdminProjectDto>>> ListAll(Guid orgId, CancellationToken ct)
+    {
+        var userId = current.RequireUserId();
+        var memberInfo = await db.Members
+            .Where(m => m.OrganizationId == orgId && m.UserId == userId)
+            .Select(m => new { m.Role, m.Restricted })
+            .FirstOrDefaultAsync(ct);
+        if (memberInfo is null) return Forbid();
+
+        var entriesQ = db.SyncEntries
+            .Where(e => e.OrganizationId == orgId
+                && e.EntityType == "projects"
+                && e.DeletedAt == null);
+
+        // Same access scoping as List(): restricted Editors only see
+        // projects they hold a grant for. EntityId is the project id and
+        // lives in the plaintext envelope, so this filter works even when
+        // the payload itself is encrypted.
+        if (memberInfo.Role == MemberRole.Editor && memberInfo.Restricted)
+        {
+            entriesQ = entriesQ.Where(e =>
+                db.ProjectMembers.Any(pm => pm.UserId == userId && pm.ProjectId == e.EntityId));
+        }
+
+        var entries = await entriesQ
+            .Select(e => new { e.EntityId, e.PayloadFormat, e.Payload, e.UpdatedAt })
+            .ToListAsync(ct);
+
+        // Which of these projects also have a canonical Projects row —
+        // those are the ones the admin can edit/delete/grant on (write
+        // paths still anchor on db.Projects). Desktop-origin projects are
+        // view-only until those paths learn about the sync store.
+        var entityIds = entries.Select(e => e.EntityId).ToList();
+        var manageable = (await db.Projects
+            .Where(p => p.OrganizationId == orgId && p.DeletedAt == null && entityIds.Contains(p.Id))
+            .Select(p => p.Id)
+            .ToListAsync(ct)).ToHashSet();
+
+        var result = new List<AdminProjectDto>(entries.Count);
+        foreach (var e in entries)
+        {
+            var isEncrypted = e.PayloadFormat != "plain";
+            var payload = isEncrypted ? null : DeserializeProjectPayload(e.Payload);
+            result.Add(new AdminProjectDto(
+                Id: e.EntityId,
+                OrganizationId: orgId,
+                Name: payload?.Name,
+                Description: payload?.Description,
+                Version: payload?.Version ?? 0,
+                CreatedAt: payload?.CreatedAt ?? e.UpdatedAt,
+                UpdatedAt: payload?.UpdatedAt ?? e.UpdatedAt,
+                Encrypted: isEncrypted,
+                Manageable: manageable.Contains(e.EntityId)));
+        }
+
+        // Name-sorted to match List(); nameless (encrypted) rows sort last.
+        return result.OrderBy(p => p.Name ?? "￿").ToList();
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProjectDto>> Get(Guid orgId, Guid id, CancellationToken ct)
     {
@@ -102,17 +178,22 @@ public class ProjectsController(
             .FirstOrDefaultAsync(ct);
         if (memberInfo is null) return Forbid();
 
-        // Same access filter as List(): unrestricted users see every
-        // non-deleted project; restricted Editors see only their grants.
-        var projectIdsQ = db.Projects
-            .Where(p => p.OrganizationId == orgId && p.DeletedAt == null)
-            .Select(p => p.Id);
+        // Same access filter as ListAll(): the candidate project set comes
+        // from the sync log (entityType "projects"), not the canonical
+        // Projects table, so desktop-created projects get stats too.
+        // Unrestricted users see every project; restricted Editors see
+        // only their grants.
+        var projectIdsQ = db.SyncEntries
+            .Where(e => e.OrganizationId == orgId
+                && e.EntityType == "projects"
+                && e.DeletedAt == null)
+            .Select(e => e.EntityId);
         if (memberInfo.Role == MemberRole.Editor && memberInfo.Restricted)
         {
             projectIdsQ = projectIdsQ.Where(pid =>
                 db.ProjectMembers.Any(pm => pm.UserId == userId && pm.ProjectId == pid));
         }
-        var projectIds = await projectIdsQ.ToListAsync(ct);
+        var projectIds = await projectIdsQ.Distinct().ToListAsync(ct);
 
         // One scan over SyncEntries, grouped by (ProjectId, EntityType).
         // Filtering by ProjectId early uses the index on SyncEntry.ProjectId.
@@ -271,4 +352,34 @@ public class ProjectsController(
 
     private static ProjectDto ToDto(Project p) =>
         new(p.Id, p.OrganizationId, p.Name, p.Description, p.Version, p.CreatedAt, p.UpdatedAt);
+
+    // Plain sync payloads are the raw UTF-8 JSON of the desktop's local
+    // `projects` row (camelCase keys: name, description, version, ...).
+    // System.Text.Json already decoded the wire base64 into the byte[]
+    // on the entity, so we deserialize the bytes directly.
+    private static readonly JsonSerializerOptions PayloadJson = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
+    private sealed record ProjectPayloadJson(
+        string? Name,
+        string? Description,
+        int Version,
+        DateTime CreatedAt,
+        DateTime UpdatedAt);
+
+    private static ProjectPayloadJson? DeserializeProjectPayload(byte[] payload)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<ProjectPayloadJson>(payload, PayloadJson);
+        }
+        catch (JsonException)
+        {
+            // Malformed/truncated payload — surface the project as
+            // existing-but-nameless rather than failing the whole list.
+            return null;
+        }
+    }
 }

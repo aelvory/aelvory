@@ -4,12 +4,7 @@ import { useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
-import Dialog from 'primevue/dialog';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
 import Message from 'primevue/message';
-import { useConfirm } from 'primevue/useconfirm';
-import { useToast } from 'primevue/usetoast';
 import { api, ApiError } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 
@@ -19,17 +14,26 @@ interface Props {
 const props = defineProps<Props>();
 const router = useRouter();
 const auth = useAuthStore();
-const confirm = useConfirm();
-const toast = useToast();
 
 interface Project {
   id: string;
   organizationId: string;
-  name: string;
+  // Null when the project's sync payload is end-to-end encrypted — the
+  // server can't read the name, only confirm the project exists.
+  name: string | null;
   description: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
+  /** True when the payload is E2EE and the server couldn't read it. */
+  encrypted: boolean;
+  /**
+   * True only when a canonical Projects row also exists. The Access
+   * (project-member grant) flow anchors on that row, so it's only
+   * offered for manageable projects; desktop-origin (sync-only)
+   * projects are list-only here.
+   */
+  manageable: boolean;
 }
 
 interface Member {
@@ -80,7 +84,11 @@ async function load() {
     // hits List on every sign-in and doesn't need counts — keeping it
     // separate keeps that path cheap.
     const [list, members, stats] = await Promise.all([
-      api<Project[]>(`/api/organizations/${props.orgId}/projects`),
+      // `/projects/all` reads from the sync log, so projects created on
+      // the desktop (which never reach the canonical Projects table) show
+      // up too. The plain `/projects` endpoint is canonical-only and used
+      // by the desktop reconcile — don't switch to it here.
+      api<Project[]>(`/api/organizations/${props.orgId}/projects/all`),
       api<Member[]>(`/api/organizations/${props.orgId}/members`),
       // Stats can fail in isolation (e.g. a server hiccup) without
       // breaking the page — treat missing stats as zeros and let the
@@ -107,117 +115,15 @@ async function load() {
 onMounted(load);
 watch(() => props.orgId, load);
 
-const canManage = computed(
-  () =>
-    myMember.value?.role === 'owner' ||
-    myMember.value?.role === 'admin' ||
-    (myMember.value?.role === 'editor' && !myMember.value.restricted),
-);
 /**
- * Owner/Admin gate. Used for project deletion AND access management
- * (granting/revoking ProjectMembers) — the server enforces the same
- * role check on `/api/projects/{id}/members` (see
- * ProjectMembersController.IsAdminAsync). Surfacing those buttons to
- * an Editor would just cough up a 403 on click.
+ * Owner/Admin gate. Used for access management (granting/revoking
+ * ProjectMembers) — the server enforces the same role check on
+ * `/api/projects/{id}/members` (see ProjectMembersController.IsAdminAsync).
+ * Surfacing the button to an Editor would just cough up a 403 on click.
  */
 const isOrgAdmin = computed(
   () => myMember.value?.role === 'owner' || myMember.value?.role === 'admin',
 );
-
-// ---- Create / edit dialog ----
-
-const editOpen = ref(false);
-const editTitle = ref('');
-const editingId = ref<string | null>(null);
-const editName = ref('');
-const editDescription = ref('');
-const editBusy = ref(false);
-const editError = ref<string | null>(null);
-
-function openCreate() {
-  editingId.value = null;
-  editTitle.value = 'New project';
-  editName.value = '';
-  editDescription.value = '';
-  editError.value = null;
-  editOpen.value = true;
-}
-
-function openEdit(p: Project) {
-  editingId.value = p.id;
-  editTitle.value = `Edit ${p.name}`;
-  editName.value = p.name;
-  editDescription.value = p.description ?? '';
-  editError.value = null;
-  editOpen.value = true;
-}
-
-async function submitEdit() {
-  editError.value = null;
-  if (!editName.value.trim()) {
-    editError.value = 'Name is required.';
-    return;
-  }
-  editBusy.value = true;
-  try {
-    const body = {
-      name: editName.value.trim(),
-      description: editDescription.value.trim() || null,
-    };
-    if (editingId.value) {
-      const updated = await api<Project>(
-        `/api/organizations/${props.orgId}/projects/${editingId.value}`,
-        { method: 'PUT', body },
-      );
-      const i = projects.value.findIndex((p) => p.id === updated.id);
-      if (i >= 0) projects.value[i] = updated;
-    } else {
-      const created = await api<Project>(
-        `/api/organizations/${props.orgId}/projects`,
-        { method: 'POST', body },
-      );
-      projects.value = [...projects.value, created];
-    }
-    editOpen.value = false;
-  } catch (err) {
-    editError.value = err instanceof Error ? err.message : 'save_failed';
-  } finally {
-    editBusy.value = false;
-  }
-}
-
-function confirmDelete(p: Project) {
-  confirm.require({
-    header: 'Delete project?',
-    message:
-      `Delete "${p.name}"? Every collection, request, environment and ` +
-      `variable inside is removed for everyone with access. This can't be undone.`,
-    acceptLabel: 'Delete',
-    rejectLabel: 'Cancel',
-    acceptClass: 'p-button-danger',
-    accept: async () => {
-      try {
-        await api(`/api/organizations/${props.orgId}/projects/${p.id}`, {
-          method: 'DELETE',
-        });
-        projects.value = projects.value.filter((x) => x.id !== p.id);
-        toast.add({
-          severity: 'success',
-          summary: 'Deleted',
-          detail: `${p.name} is gone.`,
-          life: 3500,
-        });
-      } catch (err) {
-        toast.add({
-          severity: 'error',
-          summary: 'Could not delete',
-          detail: err instanceof Error ? err.message : String(err),
-          life: 5000,
-        });
-      }
-    },
-  });
-}
 
 function openAccess(p: Project) {
   router.push({
@@ -233,17 +139,12 @@ function openAccess(p: Project) {
       <div>
         <h1 class="page-title">Projects</h1>
         <p class="page-sub">
-          Projects are the unit of access. Restricted Editors only see
-          the projects you grant them access to via the
+          A read-only view of every project in this organization, including
+          those created in the desktop app. Projects are the unit of access:
+          restricted Editors only see the ones you grant them via the
           <strong>Access</strong> button.
         </p>
       </div>
-      <Button
-        v-if="canManage"
-        icon="pi pi-plus"
-        label="New project"
-        @click="openCreate"
-      />
     </header>
 
     <Message
@@ -254,7 +155,14 @@ function openAccess(p: Project) {
     >{{ loadError }}</Message>
 
     <DataTable :value="projects" :loading="loading" strip-rows data-key="id">
-      <Column field="name" header="Name" />
+      <Column field="name" header="Name">
+        <template #body="{ data }">
+          <span v-if="data.encrypted" class="locked" title="End-to-end encrypted — the server can't read this project's name">
+            <i class="pi pi-lock" /> Encrypted project
+          </span>
+          <span v-else>{{ data.name }}</span>
+        </template>
+      </Column>
       <Column field="description" header="Description">
         <template #body="{ data }">
           <span v-if="data.description">{{ data.description }}</span>
@@ -311,11 +219,18 @@ function openAccess(p: Project) {
           </div>
         </template>
       </Column>
-      <Column header="" style="width: 280px">
+      <Column header="" style="width: 160px">
         <template #body="{ data }">
           <div class="row-actions">
+            <!--
+              Access (project-member grants) anchors on the canonical
+              Projects row, which desktop-origin projects don't have. Gate
+              on `manageable` so we never surface a button that would 404;
+              show a "synced from desktop" hint instead so the row doesn't
+              look broken.
+            -->
             <Button
-              v-if="isOrgAdmin"
+              v-if="isOrgAdmin && data.manageable"
               icon="pi pi-users"
               label="Access"
               size="small"
@@ -323,26 +238,13 @@ function openAccess(p: Project) {
               severity="secondary"
               @click="openAccess(data)"
             />
-            <Button
-              v-if="canManage"
-              icon="pi pi-pencil"
-              size="small"
-              text
-              severity="secondary"
-              aria-label="Edit project"
-              @click="openEdit(data)"
-            />
-            <Button
-              v-if="isOrgAdmin"
-              icon="pi pi-trash"
-              size="small"
-              text
-              rounded
-              severity="secondary"
-              class="danger-btn"
-              aria-label="Delete project"
-              @click="confirmDelete(data)"
-            />
+            <span
+              v-else-if="isOrgAdmin && !data.manageable"
+              class="view-only"
+              title="Created in the desktop app — it lives in the sync log, not the admin database, so per-project access can't be managed here."
+            >
+              <i class="pi pi-cloud" /> synced from desktop
+            </span>
           </div>
         </template>
       </Column>
@@ -350,37 +252,6 @@ function openAccess(p: Project) {
         <span v-if="!loading">No projects yet.</span>
       </template>
     </DataTable>
-
-    <Dialog
-      v-model:visible="editOpen"
-      modal
-      :header="editTitle"
-      :style="{ width: '460px' }"
-    >
-      <div class="form">
-        <label class="lbl">Name</label>
-        <InputText v-model="editName" autofocus />
-
-        <label class="lbl">Description</label>
-        <Textarea v-model="editDescription" rows="3" auto-resize />
-
-        <Message
-          v-if="editError"
-          severity="error"
-          :closable="false"
-          class="msg"
-        >{{ editError }}</Message>
-      </div>
-      <template #footer>
-        <Button label="Cancel" text @click="editOpen = false" />
-        <Button
-          :label="editingId ? 'Save' : 'Create'"
-          :loading="editBusy"
-          :disabled="!editName.trim()"
-          @click="submitEdit"
-        />
-      </template>
-    </Dialog>
   </div>
 </template>
 
@@ -430,19 +301,25 @@ function openAccess(p: Project) {
   color: var(--p-text-muted-color, #9ca3af);
   font-size: 0.85rem;
 }
-.danger-btn:hover {
-  color: #dc2626;
-  background: rgba(220, 38, 38, 0.08);
+.locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--p-text-muted-color, #6b7280);
+  font-style: italic;
 }
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+.locked i {
+  font-size: 0.78rem;
 }
-.lbl {
-  font-size: 0.82rem;
-  font-weight: 500;
-  margin-top: 0.4rem;
+.view-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--p-text-muted-color, #9ca3af);
+}
+.view-only i {
+  font-size: 0.72rem;
 }
 .msg { font-size: 0.82rem; margin-top: 0.5rem; }
 </style>

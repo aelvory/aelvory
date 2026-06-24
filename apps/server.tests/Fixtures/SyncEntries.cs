@@ -88,6 +88,70 @@ public static class SyncEntries
             Seq: 0);
     }
 
+    /// <summary>
+    /// A "projects" entry — how a desktop-created project reaches the
+    /// server (it never hits the canonical Projects table). The payload
+    /// mirrors the desktop's local `projects` row so the admin
+    /// `projects/all` endpoint can read its name. For a projects entry
+    /// the project id IS the entity id and the project scope.
+    /// </summary>
+    public static SyncEntryDto NewProject(
+        Guid orgId,
+        Guid? projectId = null,
+        string name = "Desktop project",
+        string? description = null,
+        DateTime? updatedAt = null)
+    {
+        var id = projectId ?? Guid.NewGuid();
+        var now = updatedAt ?? DateTime.UtcNow;
+        return new SyncEntryDto(
+            OrganizationId: orgId,
+            ProjectId: id,
+            EntityType: "projects",
+            EntityId: id,
+            PayloadFormat: "plain",
+            Payload: PlaintextJson(new
+            {
+                id,
+                organizationId = orgId,
+                name,
+                description,
+                version = 1,
+                createdAt = now,
+                updatedAt = now,
+                deletedAt = (DateTime?)null,
+            }),
+            CryptoHeader: null,
+            UpdatedAt: now,
+            DeletedAt: null,
+            Seq: 0);
+    }
+
+    /// <summary>
+    /// A projects entry with an E2EE-encrypted payload — the server can't
+    /// read its name, only confirm it exists. Mirrors what a desktop with
+    /// E2EE enabled pushes.
+    /// </summary>
+    public static SyncEntryDto NewEncryptedProject(
+        Guid orgId,
+        Guid? projectId = null,
+        DateTime? updatedAt = null)
+    {
+        var id = projectId ?? Guid.NewGuid();
+        var now = updatedAt ?? DateTime.UtcNow;
+        return new SyncEntryDto(
+            OrganizationId: orgId,
+            ProjectId: id,
+            EntityType: "projects",
+            EntityId: id,
+            PayloadFormat: "encrypted",
+            Payload: Encoding.UTF8.GetBytes("opaque-ciphertext-bytes"),
+            CryptoHeader: "{\"alg\":\"xchacha20poly1305\",\"kdf\":\"argon2id\"}",
+            UpdatedAt: now,
+            DeletedAt: null,
+            Seq: 0);
+    }
+
     private static byte[] PlaintextJson(object value) =>
         Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value));
 }
